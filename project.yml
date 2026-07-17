@@ -1,0 +1,111 @@
+name: ExtendReality
+options:
+  bundleIdPrefix: com.vladprusakov
+  deploymentTarget:
+    iOS: "18.0"
+    watchOS: "11.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: targeted
+    DEVELOPMENT_TEAM: 8PYCRS3EA3
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+packages:
+  RoyalVNCKit:
+    url: https://github.com/royalapplications/royalvnc.git
+    revision: 337197afdb32020d3dfdb7d058989115b740cdc4
+targets:
+  ExtendReality:
+    type: application
+    platform: iOS
+    sources:
+      - path: ExtendReality
+      - path: Shared
+    info:
+      path: ExtendReality/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ExtendReality
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: ExtendReality connects to your Mac for remote desktop sessions on the local network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _rfb._tcp.
+        NSPhotoLibraryUsageDescription: ExtendReality displays photos and videos you select in the glasses workspace.
+        NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Phone
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).PhoneSceneDelegate
+            UIWindowSceneSessionRoleExternalDisplayNonInteractive:
+              - UISceneConfigurationName: External Display
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).ExternalDisplaySceneDelegate
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality
+        PRODUCT_NAME: ExtendReality
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        SUPPORTS_MACCATALYST: NO
+    dependencies:
+      - package: RoyalVNCKit
+        product: RoyalVNCKit
+        embed: true
+        codeSign: true
+      - target: ExtendRealityWatch
+        embed: true
+  ExtendRealityWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: ExtendRealityWatch
+      - path: Shared
+    info:
+      path: ExtendRealityWatch/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ExtendReality
+        NSMotionUsageDescription: ExtendReality uses Apple Watch motion to move the spatial pointer.
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.vladprusakov.ExtendReality
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.watchkitapp
+        PRODUCT_NAME: ExtendReality Watch
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        SKIP_INSTALL: YES
+  ExtendRealityTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ExtendRealityTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendRealityTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ExtendReality.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ExtendReality"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: ExtendReality
+schemes:
+  ExtendReality:
+    build:
+      targets:
+        ExtendReality: all
+        ExtendRealityWatch: all
+        ExtendRealityTests: [test]
+    test:
+      targets:
+        - ExtendRealityTests
+  ExtendRealityWatch:
+    build:
+      targets:
+        ExtendRealityWatch: all
