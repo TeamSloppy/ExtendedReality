@@ -1,5 +1,5 @@
-export function createCatalog(publicOrigin) {
-  const origin = normalizeOrigin(publicOrigin)
+export function createCatalog(publicBaseURL) {
+  const { baseURL, origin } = normalizeBaseURL(publicBaseURL)
 
   return {
     schemaVersion: 1,
@@ -10,8 +10,8 @@ export function createCatalog(publicOrigin) {
         summary: 'An offline-first spatial whiteboard powered by Excalidraw.',
         developer: 'ExtendReality',
         version: '1.0.0',
-        launchURL: `${origin}/spatial-board/`,
-        universalLink: `${origin}/spatial-board/`,
+        launchURL: `${baseURL}/spatial-board/`,
+        universalLink: `${baseURL}/spatial-board/`,
         allowedOrigins: [origin],
         displayModes: ['window', 'widget'],
         requestedCapabilities: [],
@@ -24,8 +24,8 @@ export function createCatalog(publicOrigin) {
         summary: 'Diagnose offline storage, media permissions, and ExtendReality host APIs.',
         developer: 'ExtendReality',
         version: '1.0.0',
-        launchURL: `${origin}/pwa-lab/`,
-        universalLink: `${origin}/pwa-lab/`,
+        launchURL: `${baseURL}/pwa-lab/`,
+        universalLink: `${baseURL}/pwa-lab/`,
         allowedOrigins: [origin],
         displayModes: ['window', 'widget'],
         requestedCapabilities: ['camera', 'microphone', 'location', 'health', 'focusStatus'],
@@ -36,13 +36,17 @@ export function createCatalog(publicOrigin) {
   }
 }
 
-export function normalizeOrigin(value) {
+export function normalizeBaseURL(value) {
   const url = new URL(value)
   if (url.protocol !== 'https:') {
-    throw new Error('PWA_PUBLIC_ORIGIN must use HTTPS.')
+    throw new Error('PWA_PUBLIC_BASE_URL must use HTTPS.')
   }
-  if (url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('PWA_PUBLIC_ORIGIN must contain only scheme and host.')
+  if (url.search || url.hash) {
+    throw new Error('PWA_PUBLIC_BASE_URL must not contain a query or fragment.')
   }
-  return url.origin
+  const path = url.pathname.replace(/\/+$/, '')
+  return {
+    baseURL: `${url.origin}${path}`,
+    origin: url.origin,
+  }
 }

@@ -12,6 +12,7 @@ final class SurfaceRegistry {
     private var media: [UUID: MediaSession] = [:]
     private var youtube: [UUID: YouTubeSession] = [:]
     private var remoteDesktops: [UUID: RoyalVNCSession] = [:]
+    private var macStreams: [UUID: BrowserSession] = [:]
 
     init(
         inputRouter: InputRouter,
@@ -33,7 +34,12 @@ final class SurfaceRegistry {
                 _ = pwa(for: window.id, installation: installation, displayMode: displayMode)
             case .gallery: _ = mediaSession(for: window.id)
             case .youtube(let videoID): _ = youtubeSession(for: window.id, initialVideoID: videoID)
-            case .remoteDesktop(let host): _ = remoteDesktop(for: window.id, initialHost: host)
+            case .remoteDesktop(let host):
+                if let host, Self.isWebStreamAddress(host) {
+                    _ = macStream(for: window.id, initialURL: host)
+                } else {
+                    _ = remoteDesktop(for: window.id, initialHost: host)
+                }
             }
         }
     }
@@ -96,11 +102,26 @@ final class SurfaceRegistry {
         return session
     }
 
+    func macStream(for id: UUID, initialURL: String) -> BrowserSession {
+        if let session = macStreams[id] { return session }
+        let session = BrowserSession(initialURL: initialURL)
+        macStreams[id] = session
+        inputRouter.register(session, for: id)
+        return session
+    }
+
+    nonisolated static func isWebStreamAddress(_ address: String?) -> Bool {
+        guard let address,
+              let scheme = URL(string: address)?.scheme?.lowercased() else { return false }
+        return ["http", "https"].contains(scheme)
+    }
+
     func remove(windowID: UUID) {
         browsers.removeValue(forKey: windowID)
         pwaBrowsers.removeValue(forKey: windowID)
         media.removeValue(forKey: windowID)
         youtube.removeValue(forKey: windowID)
+        macStreams.removeValue(forKey: windowID)
         remoteDesktops.removeValue(forKey: windowID)?.disconnect()
     }
 

@@ -1,0 +1,64 @@
+name: Deploy pilot PWAs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/pwa-pages.yml
+      - pwa-apps/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pwa-apps/package-lock.json
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Install dependencies
+        working-directory: pwa-apps
+        run: npm ci
+
+      - name: Test and build PWAs
+        working-directory: pwa-apps
+        env:
+          PWA_PUBLIC_BASE_URL: ${{ steps.pages.outputs.base_url }}
+          PWA_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: npm run check
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: pwa-apps/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

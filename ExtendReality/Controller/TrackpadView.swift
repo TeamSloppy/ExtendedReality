@@ -490,6 +490,10 @@ enum ControllerHaptics {
     static func navigation() {
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.65)
     }
+
+    static func error() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
 }
 
 #if DEBUG

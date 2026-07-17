@@ -11,7 +11,7 @@ Node.js 22.12 or newer is required.
 
 ```sh
 npm install
-PWA_PUBLIC_ORIGIN=https://apps.your-domain.example npm run build
+PWA_PUBLIC_BASE_URL=https://apps.your-domain.example npm run build
 ```
 
 The deployable static site is assembled in `dist/`:
@@ -39,6 +39,17 @@ npm run dev:lab
 ```
 
 Localhost is suitable for browser development because browsers treat it as a secure development context. The iOS host deliberately accepts only HTTPS manifest URLs, so test the complete installation flow from a trusted HTTPS deployment or tunnel.
+
+## GitHub Pages
+
+The repository workflow deploys the site as a GitHub project Page at `https://spectraldragon.github.io/ExtendedReality/`. Project Pages require a repository path prefix, so the workflow builds with both:
+
+```sh
+PWA_PUBLIC_BASE_URL=https://spectraldragon.github.io/ExtendedReality
+PWA_BASE_PATH=/ExtendedReality
+```
+
+After the first successful deployment, use `https://spectraldragon.github.io/ExtendedReality/catalog.json` as `ExtendRealityPWACatalogURL`.
 
 ## Validation flow
 

@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05ABFFD081015AF4AE464DF6 /* ExtendRealityWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B3DACE4DA302FD097E8B14C4 /* ExtendRealityWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		06E70D7D7392B6D257F9FB54 /* InputRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2E5D98588DC1E3364D37C24 /* InputRouter.swift */; };
 		0AA6469850FA66AE6F904FAC /* SurfaceHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A667D35E8051C505E518D1C3 /* SurfaceHostView.swift */; };
 		0DD92944A455CE000E8F0FF1 /* RemoteDisplayLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346DD6AB3CD30D5AF46D464D /* RemoteDisplayLayout.swift */; };
 		106F32E2F205C81C06E1089A /* RemoteDisplayLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74134FD7B43FAC434B3A6C19 /* RemoteDisplayLayoutTests.swift */; };
+		158F2314F4A49AEBD1261C9E /* MacStreamProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90C2E2D6AD1BF2ECE6FC7453 /* MacStreamProtocolTests.swift */; };
 		2658AEAB3EDBD68F95DA6F24 /* WatchControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0ACCFDA16B88CBD9B4BD15 /* WatchControlView.swift */; };
 		27FDF560296444B1295776A0 /* SourceSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DCB83FBD08380C9A386483 /* SourceSidebarView.swift */; };
 		2A3974DF95F5E06845A2766D /* WatchRemoteController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CAAC6AE8D283D6662CEDDC6 /* WatchRemoteController.swift */; };
@@ -23,6 +25,7 @@
 		3D2524A8C98609C1DE5725E5 /* WindowProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD4ED33EC147E034206A8BF9 /* WindowProjectionTests.swift */; };
 		49129BD08A6842B2FF1A008B /* FrameStreamingServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481CD2EFFC97A0D7ECA61B79 /* FrameStreamingServer.swift */; };
 		4AB94BABC1BEADF3EA88A028 /* PWAStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF7D5D2F65B77025A137836 /* PWAStore.swift */; };
+		4AD9AAD94CA43658C16ADDB6 /* RemoteStreamProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E62E6A308EA917491E2A3051 /* RemoteStreamProtocolTests.swift */; };
 		4BAC578B52D3026934FD16F0 /* ControllerRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36D7E3C93CB3061CE1788F /* ControllerRootView.swift */; };
 		4DEAE091D2F3423E62EDE62A /* MediaSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE7DB137B36CCDC20E9ED72 /* MediaSurface.swift */; };
 		5320B5D8F87A0101D3A255C0 /* WatchControlModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774AE5808950F081F0481AC5 /* WatchControlModel.swift */; };
@@ -35,9 +38,11 @@
 		68ACC4A61BC5F2E69D460977 /* DashboardEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 783E9D456F31492749858A8E /* DashboardEditorView.swift */; };
 		6934AACBA9DECD2D4DAF2ED2 /* StreamProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54AA47EF6116049C55EE02BA /* StreamProfile.swift */; };
 		707B995896593DBD6D6D02AB /* PWAStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05CE0961243CE4779B4EAB3D /* PWAStoreTests.swift */; };
+		777A8F3AC573FBECB46C00EF /* ExtendRealityControlWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC7D9FE714039FC1B8ADB7EC /* ExtendRealityControlWidget.swift */; };
 		781018C4E5EEC44129621811 /* UltrawideLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D13AFE8E75CD64DD37A035B /* UltrawideLayoutTests.swift */; };
 		7844E8E2375C19DE9DEA66E5 /* DashboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E8EB6BA4B73A1B9709364A7 /* DashboardStore.swift */; };
 		85E1BCC207457CF2030DFA03 /* WatchControlProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C70E71BEE2FF902CDDF23B /* WatchControlProtocolTests.swift */; };
+		862FCB1C5B1B81FF6946975B /* MacStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FA9408C1BBD34FA10A69B3 /* MacStreamClient.swift */; };
 		89B3DE0CFC446AE45A57B06B /* WorkspaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA21BCAF8862F935A79D5E65 /* WorkspaceModels.swift */; };
 		8F2D96B23625E14C994AC80B /* SystemDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C86F2F3415C531F4F99C4D /* SystemDataStore.swift */; };
 		9007E0A35B72E2E83C9398C7 /* PWAStoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7605A5DD5A2D3C1D09CC15 /* PWAStoreView.swift */; };
@@ -58,6 +63,7 @@
 		E32DD59F07E4AC2D949D9A0C /* MacStreamingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF80C3415E2491E3E91B3D34 /* MacStreamingStore.swift */; };
 		E6AD2EB478D905CB05078BC5 /* ExtendRealityWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = FA9429F81415407144F5FA3F /* ExtendRealityWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E8C5B2C96D1FF3FEF59B14CA /* BrowserSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5A63D54317B666397EB688 /* BrowserSurface.swift */; };
+		EC4550F79A4E95CCF76D472F /* MacStreamProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CDC62E945A57B1128BB4B0A /* MacStreamProtocol.swift */; };
 		EC6834A30744BD775F429C9D /* DebugSocketStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6308A62F677FD5838B3A319 /* DebugSocketStreamer.swift */; };
 		F00F46746080972EC139F8EF /* WorkspacePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7DBE68864ED2F618793C54 /* WorkspacePersistenceTests.swift */; };
 		F2442B3504C7E6F9C269A583 /* SurfaceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B123A62095270D0537975CB7 /* SurfaceRegistry.swift */; };
@@ -70,6 +76,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		17E5017B7FBF2CEAE22843AA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2C4B4D01164960B394039537 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 71F6761C2FDE6A44D6233402;
+			remoteInfo = ExtendRealityWatchWidget;
+		};
 		6BA24CC703584CF1572E5C66 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 2C4B4D01164960B394039537 /* Project object */;
@@ -94,6 +107,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		2EAD4DEF6AC9EC1DD7219E55 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				05ABFFD081015AF4AE464DF6 /* ExtendRealityWatchWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4B200E3B22FD7F21AA61521C /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -129,6 +153,7 @@
 		14C86F2F3415C531F4F99C4D /* SystemDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemDataStore.swift; sourceTree = "<group>"; };
 		19F92200C5C742EDE41773F8 /* ExtendRealityMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExtendRealityMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		22463C62D2942613AF0DB254 /* YouTubeVideoIDParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeVideoIDParserTests.swift; sourceTree = "<group>"; };
+		2CDC62E945A57B1128BB4B0A /* MacStreamProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamProtocol.swift; sourceTree = "<group>"; };
 		30314D148679356E0B2B5689 /* ExtendReality.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExtendReality.entitlements; sourceTree = "<group>"; };
 		31DCB83FBD08380C9A386483 /* SourceSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSidebarView.swift; sourceTree = "<group>"; };
 		346DD6AB3CD30D5AF46D464D /* RemoteDisplayLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDisplayLayout.swift; sourceTree = "<group>"; };
@@ -136,6 +161,7 @@
 		3B7605A5DD5A2D3C1D09CC15 /* PWAStoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PWAStoreView.swift; sourceTree = "<group>"; };
 		3CAAC6AE8D283D6662CEDDC6 /* WatchRemoteController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRemoteController.swift; sourceTree = "<group>"; };
 		40E1CB401D72C771F2CA844C /* DashboardStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardStoreTests.swift; sourceTree = "<group>"; };
+		41A062332230627CDCAC99B6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		481CD2EFFC97A0D7ECA61B79 /* FrameStreamingServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStreamingServer.swift; sourceTree = "<group>"; };
 		4A6CE6E2986B6A7F643C9124 /* TrackpadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackpadView.swift; sourceTree = "<group>"; };
 		4CF5800AFD672F84C1E1D1DB /* InputRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputRouterTests.swift; sourceTree = "<group>"; };
@@ -150,9 +176,11 @@
 		74134FD7B43FAC434B3A6C19 /* RemoteDisplayLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDisplayLayoutTests.swift; sourceTree = "<group>"; };
 		774AE5808950F081F0481AC5 /* WatchControlModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchControlModel.swift; sourceTree = "<group>"; };
 		783E9D456F31492749858A8E /* DashboardEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardEditorView.swift; sourceTree = "<group>"; };
+		90C2E2D6AD1BF2ECE6FC7453 /* MacStreamProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamProtocolTests.swift; sourceTree = "<group>"; };
 		9893182B0B9F40C3FBAFD73F /* ExtendReality.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ExtendReality.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		99A5251D33241EF287E8685B /* WorkspacePersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePersistence.swift; sourceTree = "<group>"; };
 		99C53B64EB09144951C3BD71 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		99FA9408C1BBD34FA10A69B3 /* MacStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamClient.swift; sourceTree = "<group>"; };
 		9F5A63D54317B666397EB688 /* BrowserSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserSurface.swift; sourceTree = "<group>"; };
 		9F618ED103B6A7012A1356F5 /* WindowProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowProjection.swift; sourceTree = "<group>"; };
 		A0C70E71BEE2FF902CDDF23B /* WatchControlProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchControlProtocolTests.swift; sourceTree = "<group>"; };
@@ -165,15 +193,18 @@
 		AE71BFE48627BA7852C91D34 /* StreamDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamDetailView.swift; sourceTree = "<group>"; };
 		B123A62095270D0537975CB7 /* SurfaceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceRegistry.swift; sourceTree = "<group>"; };
 		B2E5D98588DC1E3364D37C24 /* InputRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputRouter.swift; sourceTree = "<group>"; };
+		B3DACE4DA302FD097E8B14C4 /* ExtendRealityWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ExtendRealityWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B45C83925701336BA6A5679E /* ExtendRealityTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ExtendRealityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BACE4F567BB27C361F940872 /* SpatialCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialCanvasView.swift; sourceTree = "<group>"; };
 		C0930B9980C98854AC55AF46 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		CC7D9FE714039FC1B8ADB7EC /* ExtendRealityControlWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityControlWidget.swift; sourceTree = "<group>"; };
 		CDB088C15B87D0B8D84B5580 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CF80C3415E2491E3E91B3D34 /* MacStreamingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamingStore.swift; sourceTree = "<group>"; };
 		D281519E0117FF8EEE9C0E98 /* ExtendRealityWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityWatchApp.swift; sourceTree = "<group>"; };
 		DCCE580DD2D24677522CACB9 /* HeadPoseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadPoseProvider.swift; sourceTree = "<group>"; };
 		DD8ED399FC9C6B081EAFB799 /* RoyalVNCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoyalVNCSession.swift; sourceTree = "<group>"; };
 		DD9B3AF2189D52751BD2B1AC /* RemoteDisplayLayoutSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDisplayLayoutSettingsView.swift; sourceTree = "<group>"; };
+		E62E6A308EA917491E2A3051 /* RemoteStreamProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteStreamProtocolTests.swift; sourceTree = "<group>"; };
 		E6308A62F677FD5838B3A319 /* DebugSocketStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSocketStreamer.swift; sourceTree = "<group>"; };
 		EA25533E7C9C3B33D1AC7C43 /* RemoteDesktopSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDesktopSurface.swift; sourceTree = "<group>"; };
 		EA607D5899FBB85B0C0850CA /* ScreenCaptureCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureCoordinator.swift; sourceTree = "<group>"; };
@@ -248,11 +279,21 @@
 		2C2B0209E163E11A38B058CB /* RemoteDesktop */ = {
 			isa = PBXGroup;
 			children = (
+				99FA9408C1BBD34FA10A69B3 /* MacStreamClient.swift */,
+				2CDC62E945A57B1128BB4B0A /* MacStreamProtocol.swift */,
 				01BD8787A7EEB05C376C1EF2 /* RemoteDesktopSession.swift */,
 				346DD6AB3CD30D5AF46D464D /* RemoteDisplayLayout.swift */,
 				DD8ED399FC9C6B081EAFB799 /* RoyalVNCSession.swift */,
 			);
 			path = RemoteDesktop;
+			sourceTree = "<group>";
+		};
+		52C0FA1EA1315E2DDF8ED21E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				41A062332230627CDCAC99B6 /* Info.plist */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		577FA111C9F0406F98246C66 /* Views */ = {
@@ -323,6 +364,7 @@
 		8B1A964A4FB127879239F486 /* ExtendRealityMacTests */ = {
 			isa = PBXGroup;
 			children = (
+				E62E6A308EA917491E2A3051 /* RemoteStreamProtocolTests.swift */,
 				5D13AFE8E75CD64DD37A035B /* UltrawideLayoutTests.swift */,
 			);
 			path = ExtendRealityMacTests;
@@ -337,6 +379,15 @@
 				EE91F7957C285115CF328F10 /* Resources */,
 			);
 			path = ExtendRealityWatch;
+			sourceTree = "<group>";
+		};
+		9237ACBD12CF0C5CFB850E89 /* ExtendRealityWatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				CC7D9FE714039FC1B8ADB7EC /* ExtendRealityControlWidget.swift */,
+				52C0FA1EA1315E2DDF8ED21E /* Resources */,
+			);
+			path = ExtendRealityWatchWidget;
 			sourceTree = "<group>";
 		};
 		93E475F23CBABB4EF5ED2484 /* Resources */ = {
@@ -395,6 +446,7 @@
 				8B1A964A4FB127879239F486 /* ExtendRealityMacTests */,
 				FEA3E0F85AD28EE25FAAEE87 /* ExtendRealityTests */,
 				916DF0C6025D06BE00F357B0 /* ExtendRealityWatch */,
+				9237ACBD12CF0C5CFB850E89 /* ExtendRealityWatchWidget */,
 				01F2943582A2EC9A6E907B4D /* Shared */,
 				D59BB49AA47D135802F46D62 /* Products */,
 			);
@@ -457,6 +509,7 @@
 				ADD56AE788FA5822B2D731D2 /* ExtendRealityMacTests.xctest */,
 				B45C83925701336BA6A5679E /* ExtendRealityTests.xctest */,
 				FA9429F81415407144F5FA3F /* ExtendRealityWatch.app */,
+				B3DACE4DA302FD097E8B14C4 /* ExtendRealityWatchWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -509,6 +562,7 @@
 				40E1CB401D72C771F2CA844C /* DashboardStoreTests.swift */,
 				4DF21E9838306948F45D0767 /* HeadPoseSmootherTests.swift */,
 				4CF5800AFD672F84C1E1D1DB /* InputRouterTests.swift */,
+				90C2E2D6AD1BF2ECE6FC7453 /* MacStreamProtocolTests.swift */,
 				05CE0961243CE4779B4EAB3D /* PWAStoreTests.swift */,
 				74134FD7B43FAC434B3A6C19 /* RemoteDisplayLayoutTests.swift */,
 				A0C70E71BEE2FF902CDDF23B /* WatchControlProtocolTests.swift */,
@@ -544,6 +598,23 @@
 			productReference = 9893182B0B9F40C3FBAFD73F /* ExtendReality.app */;
 			productType = "com.apple.product-type.application";
 		};
+		71F6761C2FDE6A44D6233402 /* ExtendRealityWatchWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 01C0F863C25E46D22CD7E124 /* Build configuration list for PBXNativeTarget "ExtendRealityWatchWidget" */;
+			buildPhases = (
+				3C6BC0B89AFC758A99778D32 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ExtendRealityWatchWidget;
+			packageProductDependencies = (
+			);
+			productName = ExtendRealityWatchWidget;
+			productReference = B3DACE4DA302FD097E8B14C4 /* ExtendRealityWatchWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		85EAC94294649274DE4DC437 /* ExtendRealityMacTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EACC689CB843793976E62147 /* Build configuration list for PBXNativeTarget "ExtendRealityMacTests" */;
@@ -567,10 +638,12 @@
 			buildConfigurationList = 7ACE84B4CFAAF0B73B9953C3 /* Build configuration list for PBXNativeTarget "ExtendRealityWatch" */;
 			buildPhases = (
 				377107A3A33A255645E18D67 /* Sources */,
+				2EAD4DEF6AC9EC1DD7219E55 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B407D560A3395162E1A71660 /* PBXTargetDependency */,
 			);
 			name = ExtendRealityWatch;
 			packageProductDependencies = (
@@ -627,6 +700,10 @@
 						DevelopmentTeam = 8PYCRS3EA3;
 						ProvisioningStyle = Automatic;
 					};
+					71F6761C2FDE6A44D6233402 = {
+						DevelopmentTeam = 8PYCRS3EA3;
+						ProvisioningStyle = Automatic;
+					};
 					85EAC94294649274DE4DC437 = {
 						DevelopmentTeam = 8PYCRS3EA3;
 						ProvisioningStyle = Automatic;
@@ -667,6 +744,7 @@
 				85EAC94294649274DE4DC437 /* ExtendRealityMacTests */,
 				E3C4C761D8726F4083142458 /* ExtendRealityTests */,
 				A1920FC928A9F0E2675D93B3 /* ExtendRealityWatch */,
+				71F6761C2FDE6A44D6233402 /* ExtendRealityWatchWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -676,6 +754,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4AD9AAD94CA43658C16ADDB6 /* RemoteStreamProtocolTests.swift in Sources */,
 				781018C4E5EEC44129621811 /* UltrawideLayoutTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -688,6 +767,14 @@
 				5320B5D8F87A0101D3A255C0 /* WatchControlModel.swift in Sources */,
 				367511FF8C0D1A7BB488DDF5 /* WatchControlProtocol.swift in Sources */,
 				2658AEAB3EDBD68F95DA6F24 /* WatchControlView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3C6BC0B89AFC758A99778D32 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				777A8F3AC573FBECB46C00EF /* ExtendRealityControlWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -705,6 +792,8 @@
 				F628ED76E2FF3BA8E14DD314 /* HeadPoseProvider.swift in Sources */,
 				06E70D7D7392B6D257F9FB54 /* InputRouter.swift in Sources */,
 				A24FA029DD440A64E805A0CB /* KeychainStore.swift in Sources */,
+				862FCB1C5B1B81FF6946975B /* MacStreamClient.swift in Sources */,
+				EC4550F79A4E95CCF76D472F /* MacStreamProtocol.swift in Sources */,
 				4DEAE091D2F3423E62EDE62A /* MediaSurface.swift in Sources */,
 				2D89D8F1FD27E04A95B08641 /* PWAApp.swift in Sources */,
 				4AB94BABC1BEADF3EA88A028 /* PWAStore.swift in Sources */,
@@ -740,6 +829,7 @@
 				D76949CE43511ACBFD8A433D /* DashboardStoreTests.swift in Sources */,
 				D246D60C1BB22EE8DC46725A /* HeadPoseSmootherTests.swift in Sources */,
 				35919C3F765F6067FF20DB5B /* InputRouterTests.swift in Sources */,
+				158F2314F4A49AEBD1261C9E /* MacStreamProtocolTests.swift in Sources */,
 				707B995896593DBD6D6D02AB /* PWAStoreTests.swift in Sources */,
 				106F32E2F205C81C06E1089A /* RemoteDisplayLayoutTests.swift in Sources */,
 				85E1BCC207457CF2030DFA03 /* WatchControlProtocolTests.swift in Sources */,
@@ -776,6 +866,11 @@
 			isa = PBXTargetDependency;
 			target = E6AA945AE1F38EE462AFB5C9 /* ExtendRealityMac */;
 			targetProxy = 8CDE80B89BF8DFA31F2F929E /* PBXContainerItemProxy */;
+		};
+		B407D560A3395162E1A71660 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 71F6761C2FDE6A44D6233402 /* ExtendRealityWatchWidget */;
+			targetProxy = 17E5017B7FBF2CEAE22843AA /* PBXContainerItemProxy */;
 		};
 		DFB6F0C58D908FA6E90EF72F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -854,6 +949,24 @@
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		4E1BE09A3BC580CAC856E12A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				INFOPLIST_FILE = ExtendRealityWatchWidget/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.watchkitapp.widget;
+				PRODUCT_NAME = "ExtendReality Watch Widget";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
 			};
 			name = Release;
 		};
@@ -1084,9 +1197,36 @@
 			};
 			name = Debug;
 		};
+		F2FC40B01C3328206EC9D4EF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				INFOPLIST_FILE = ExtendRealityWatchWidget/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.watchkitapp.widget;
+				PRODUCT_NAME = "ExtendReality Watch Widget";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		01C0F863C25E46D22CD7E124 /* Build configuration list for PBXNativeTarget "ExtendRealityWatchWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F2FC40B01C3328206EC9D4EF /* Debug */,
+				4E1BE09A3BC580CAC856E12A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		186513E4037BAF032377C7DA /* Build configuration list for PBXNativeTarget "ExtendRealityMac" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

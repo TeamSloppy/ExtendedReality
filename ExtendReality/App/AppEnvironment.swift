@@ -19,6 +19,9 @@ final class AppEnvironment {
     let debugSocket: DebugSocketStreamer
     let keychain: KeychainStore
     let youtubeAPI: YouTubeAPIClient
+    let macStreamClient: MacStreamClient
+
+    private let defaults: UserDefaults
 
     private init(
         storesDataInMemory: Bool = false,
@@ -26,6 +29,7 @@ final class AppEnvironment {
         keychainService: String = "com.vladprusakov.ExtendReality",
         activatesWatchConnectivity: Bool = true
     ) {
+        defaults = dashboardDefaults
         let schema = Schema([WorkspaceSnapshot.self])
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let primaryConfiguration = ModelConfiguration(
@@ -52,6 +56,7 @@ final class AppEnvironment {
         inputRouter = InputRouter()
         keychain = KeychainStore(service: keychainService)
         youtubeAPI = YouTubeAPIClient()
+        macStreamClient = MacStreamClient()
         surfaces = SurfaceRegistry(
             inputRouter: inputRouter,
             keychain: keychain,
@@ -131,6 +136,18 @@ final class AppEnvironment {
         surfaces.prepare(for: [window])
         watchRemote.syncState()
         return window
+    }
+
+    func openMacStream() async {
+        let storedLayout = defaults.string(forKey: RemoteDisplayLayout.defaultsKey)
+            .flatMap(RemoteDisplayLayout.init(rawValue:)) ?? .single
+        do {
+            let session = try await macStreamClient.startStream(layout: storedLayout)
+            replaceMacStreamWindows(with: session)
+            ControllerHaptics.click()
+        } catch {
+            ControllerHaptics.error()
+        }
     }
 
     func closeWindow(_ id: UUID) {
@@ -217,7 +234,11 @@ final class AppEnvironment {
         guard let item = dashboard.item(id: id) else { return }
         switch item.content {
         case .app(let kind):
-            openWindow(kind)
+            if kind == .remoteDesktop {
+                Task { await openMacStream() }
+            } else {
+                openWindow(kind)
+            }
         case .pwa(let installation):
             let mode = installation.manifest.displayModes.contains(.window) ? PWADisplayMode.window : .widget
             openPWA(installation, displayMode: mode)
@@ -233,6 +254,26 @@ final class AppEnvironment {
         case .widget(.calendar), .widget(.health):
             break
         }
+    }
+
+    private func replaceMacStreamWindows(with session: MacStreamSession) {
+        let previousStreamIDs = workspace.windows.compactMap { window -> UUID? in
+            guard case .remoteDesktop(let address) = window.source,
+                  let address,
+                  let scheme = URL(string: address)?.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme) else { return nil }
+            return window.id
+        }
+        previousStreamIDs.forEach(closeWindow)
+
+        for endpoint in session.streams {
+            let window = workspace.addWindow(
+                title: endpoint.name,
+                source: .remoteDesktop(host: endpoint.url.absoluteString)
+            )
+            surfaces.prepare(for: [window])
+        }
+        watchRemote.syncState()
     }
 }
 

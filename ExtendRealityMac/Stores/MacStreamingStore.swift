@@ -1,6 +1,16 @@
 import Observation
 import ScreenCaptureKit
 
+private enum MacStreamingError: LocalizedError {
+    case noDisplays
+
+    var errorDescription: String? {
+        switch self {
+        case .noDisplays: "No Mac displays are available for streaming."
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class MacStreamingStore {
@@ -44,6 +54,15 @@ final class MacStreamingStore {
         server.onFailure = { [weak self] message in
             self?.state = .failed(message)
         }
+        server.onStartRequested = { [weak self] layout in
+            guard let self else { return }
+            try await self.startRemotely(layout: layout)
+        }
+        do {
+            try server.start()
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
     }
 
     var selectedDisplays: [CaptureDisplay] {
@@ -57,13 +76,7 @@ final class MacStreamingStore {
     func refreshDisplays() async {
         state = .loading
         do {
-            let result = try await capture.availableDisplays()
-            displays = result.0
-            systemDisplays = result.1
-            selectedDisplayIDs.formIntersection(Set(displays.map(\.id)))
-            if selectedDisplayIDs.isEmpty, let first = displays.first {
-                selectedDisplayIDs = [first.id]
-            }
+            try await loadDisplays()
             state = .ready
         } catch {
             state = .failed(error.localizedDescription)
@@ -82,24 +95,55 @@ final class MacStreamingStore {
     }
 
     func start() async {
-        let selected = displays.compactMap { display in
-            selectedDisplayIDs.contains(display.id) ? systemDisplays[display.id] : nil
-        }
         do {
-            server.updateMetadata(layout: layout, displays: selectedDisplays)
-            try server.start()
-            try await capture.start(layout: layout, displays: selected)
-            state = .capturing
+            try await startCapture()
         } catch {
-            server.stop()
             state = .failed(error.localizedDescription)
         }
     }
 
     func stop() async {
         await capture.stop()
-        server.stop()
+        frames = [:]
+        compositeFrame = nil
         state = displays.isEmpty ? .idle : .ready
+    }
+
+    private func startRemotely(layout requestedLayout: StreamLayout) async throws {
+        layout = requestedLayout
+        if displays.isEmpty {
+            state = .loading
+            try await loadDisplays()
+        }
+        try await startCapture()
+    }
+
+    private func loadDisplays() async throws {
+        let result = try await capture.availableDisplays()
+        displays = result.0
+        systemDisplays = result.1
+        selectedDisplayIDs.formIntersection(Set(displays.map(\.id)))
+        if selectedDisplayIDs.isEmpty, let first = displays.first {
+            selectedDisplayIDs = [first.id]
+        }
+    }
+
+    private func startCapture() async throws {
+        if state == .capturing {
+            await capture.stop()
+        }
+        let selected = displays.compactMap { display in
+            selectedDisplayIDs.contains(display.id) ? systemDisplays[display.id] : nil
+        }
+        guard !selected.isEmpty else {
+            throw MacStreamingError.noDisplays
+        }
+
+        frames = [:]
+        compositeFrame = nil
+        server.updateMetadata(layout: layout, displays: selectedDisplays)
+        try await capture.start(layout: layout, displays: selected)
+        state = .capturing
     }
 
     private func publishCurrentFrames() {

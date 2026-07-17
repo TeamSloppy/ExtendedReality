@@ -23,9 +23,15 @@ struct SurfaceHostView: View {
                 session: environment.surfaces.youtubeSession(for: window.id, initialVideoID: videoID)
             )
         case .remoteDesktop(let host):
-            RemoteDesktopSurfaceView(
-                session: environment.surfaces.remoteDesktop(for: window.id, initialHost: host)
-            )
+            if let host, SurfaceRegistry.isWebStreamAddress(host) {
+                BrowserSurfaceView(
+                    session: environment.surfaces.macStream(for: window.id, initialURL: host)
+                )
+            } else {
+                RemoteDesktopSurfaceView(
+                    session: environment.surfaces.remoteDesktop(for: window.id, initialHost: host)
+                )
+            }
         }
     }
 }

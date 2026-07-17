@@ -20,6 +20,20 @@
                ReferencedContainer = "container:ExtendReality.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "71F6761C2FDE6A44D6233402"
+               BuildableName = "ExtendReality Watch Widget.appex"
+               BlueprintName = "ExtendRealityWatchWidget"
+               ReferencedContainer = "container:ExtendReality.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

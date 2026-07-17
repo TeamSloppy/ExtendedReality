@@ -2,20 +2,23 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const pathPrefix = (process.env.PWA_BASE_PATH ?? '').replace(/^\/+|\/+$/g, '')
+const appBase = `/${[pathPrefix, 'spatial-board'].filter(Boolean).join('/')}/`
+
 export default defineConfig({
-  base: '/spatial-board/',
+  base: appBase,
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       manifest: {
-        id: '/spatial-board/',
+        id: appBase,
         name: 'Spatial Board',
         short_name: 'Board',
         description: 'An offline-first spatial whiteboard.',
-        start_url: '/spatial-board/',
-        scope: '/spatial-board/',
+        start_url: appBase,
+        scope: appBase,
         display: 'standalone',
         background_color: '#F0FDFA',
         theme_color: '#0D9488',
@@ -29,7 +32,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: '/spatial-board/index.html',
+        navigateFallback: `${appBase}index.html`,
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         cleanupOutdatedCaches: true,

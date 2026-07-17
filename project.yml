@@ -35,6 +35,7 @@ targets:
           NSAllowsLocalNetworking: true
         NSBonjourServices:
           - _rfb._tcp.
+          - _extend-reality._tcp.
         NSPhotoLibraryUsageDescription: ExtendReality displays photos and videos you select in the glasses workspace.
         NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.
         NSCameraUsageDescription: ExtendReality lets you grant selected web apps access to the camera.
@@ -85,10 +86,35 @@ targets:
         NSMotionUsageDescription: ExtendReality uses Apple Watch motion to move the spatial pointer.
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.vladprusakov.ExtendReality
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.vladprusakov.ExtendReality.watchkitapp
+            CFBundleURLSchemes:
+              - extendreality
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.watchkitapp
         PRODUCT_NAME: ExtendReality Watch
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        SKIP_INSTALL: YES
+    dependencies:
+      - target: ExtendRealityWatchWidget
+        embed: true
+  ExtendRealityWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: ExtendRealityWatchWidget
+    info:
+      path: ExtendRealityWatchWidget/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ExtendReality Control
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.watchkitapp.widget
+        PRODUCT_NAME: ExtendReality Watch Widget
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SKIP_INSTALL: YES
   ExtendRealityMac:
@@ -154,6 +180,7 @@ schemes:
     build:
       targets:
         ExtendRealityWatch: all
+        ExtendRealityWatchWidget: all
   ExtendRealityMac:
     build:
       targets:

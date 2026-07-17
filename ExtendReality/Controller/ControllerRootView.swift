@@ -380,6 +380,15 @@ private struct ControllerToolsSheet: View {
                 PWAStoreView(environment: environment)
             }
         }
+        .alert("Mac connection failed", isPresented: macConnectionErrorPresented) {
+            Button("OK") {
+                environment.macStreamClient.dismissError()
+            }
+        } message: {
+            if case .failed(let message) = environment.macStreamClient.state {
+                Text(message)
+            }
+        }
     }
 
     private var connectionStatus: some View {
@@ -417,12 +426,21 @@ private struct ControllerToolsSheet: View {
             HStack(spacing: 12) {
                 ForEach(WindowKind.allCases) { kind in
                     Button {
-                        environment.openWindow(kind)
-                        ControllerHaptics.click()
+                        if kind == .remoteDesktop {
+                            Task { await environment.openMacStream() }
+                        } else {
+                            environment.openWindow(kind)
+                            ControllerHaptics.click()
+                        }
                     } label: {
                         VStack(spacing: 8) {
-                            Image(systemName: kind.systemImage)
-                                .font(.title2)
+                            if kind == .remoteDesktop, environment.macStreamClient.isBusy {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: kind.systemImage)
+                                    .font(.title2)
+                            }
                             Text(kind.title)
                                 .font(.caption2)
                                 .lineLimit(1)
@@ -431,9 +449,38 @@ private struct ControllerToolsSheet: View {
                         .frame(maxWidth: .infinity, minHeight: 70)
                     }
                     .buttonStyle(.bordered)
+                    .disabled(kind == .remoteDesktop && environment.macStreamClient.isBusy)
                     .accessibilityIdentifier("launcher.\(kind.rawValue)")
                 }
             }
+            if let status = environment.macStreamClient.statusText {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(macConnectionStatusColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var macConnectionErrorPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .failed = environment.macStreamClient.state { return true }
+                return false
+            },
+            set: { isPresented in
+                if !isPresented {
+                    environment.macStreamClient.dismissError()
+                }
+            }
+        )
+    }
+
+    private var macConnectionStatusColor: Color {
+        switch environment.macStreamClient.state {
+        case .connected: .green
+        case .failed: .orange
+        default: .secondary
         }
     }
 
@@ -632,8 +679,14 @@ private struct ActiveWindowControls: View {
                 session: environment.surfaces.youtubeSession(for: window.id),
                 apiClient: environment.youtubeAPI
             )
-        case .remoteDesktop:
-            VNCControlsView(session: environment.surfaces.remoteDesktop(for: window.id))
+        case .remoteDesktop(let address):
+            if let address, SurfaceRegistry.isWebStreamAddress(address) {
+                BrowserControlsView(
+                    session: environment.surfaces.macStream(for: window.id, initialURL: address)
+                )
+            } else {
+                VNCControlsView(session: environment.surfaces.remoteDesktop(for: window.id))
+            }
         }
     }
 }

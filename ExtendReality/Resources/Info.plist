@@ -30,6 +30,7 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_rfb._tcp.</string>
+		<string>_extend-reality._tcp.</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>ExtendReality lets you grant selected web apps access to the camera.</string>

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-enum StreamLayout: String, CaseIterable, Identifiable, Sendable {
+enum StreamLayout: String, CaseIterable, Codable, Identifiable, Sendable {
     case single
     case multiple
     case ultrawide
@@ -31,6 +31,22 @@ enum StreamLayout: String, CaseIterable, Identifiable, Sendable {
         case .ultrawide: "aspectratio"
         }
     }
+}
+
+struct RemoteStreamEndpoint: Codable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let url: URL
+}
+
+struct RemoteStreamSession: Codable, Equatable, Sendable {
+    let version: Int
+    let layout: StreamLayout
+    let streams: [RemoteStreamEndpoint]
+}
+
+struct RemoteStreamAPIError: Codable, Equatable, Sendable {
+    let error: String
 }
 
 struct CaptureDisplay: Identifiable, Hashable, Sendable {

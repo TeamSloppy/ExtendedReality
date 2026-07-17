@@ -1,6 +1,6 @@
 import Foundation
 
-enum RemoteDisplayLayout: String, CaseIterable, Identifiable, Sendable {
+enum RemoteDisplayLayout: String, CaseIterable, Codable, Identifiable, Sendable {
     static let defaultsKey = "remoteDesktop.displayLayout"
 
     case single

@@ -24,10 +24,12 @@ final class FrameStreamingServer {
     private var latestFrames: [CGDirectDisplayID: CGImage] = [:]
     private var latestComposite: CGImage?
     private var lastPublishTime: ContinuousClock.Instant?
+    private var publicAddress: URL?
 
     var onAddressChanged: ((URL?) -> Void)?
     var onViewerCountChanged: ((Int) -> Void)?
     var onFailure: ((String) -> Void)?
+    var onStartRequested: ((StreamLayout) async throws -> Void)?
 
     func updateMetadata(layout: StreamLayout, displays: [CaptureDisplay]) {
         self.layout = layout
@@ -64,6 +66,7 @@ final class FrameStreamingServer {
         latestFrames.removeAll()
         latestComposite = nil
         lastPublishTime = nil
+        publicAddress = nil
         onAddressChanged?(nil)
         onViewerCountChanged?(0)
     }
@@ -129,7 +132,8 @@ final class FrameStreamingServer {
         case .ready:
             guard let port = listener?.port else { return }
             let hostname = ProcessInfo.processInfo.hostName
-            onAddressChanged?(URL(string: "http://\(hostname):\(port.rawValue)/"))
+            publicAddress = URL(string: "http://\(hostname):\(port.rawValue)/")
+            onAddressChanged?(publicAddress)
         case .failed(let error):
             stop()
             onFailure?(error.localizedDescription)
@@ -155,11 +159,11 @@ final class FrameStreamingServer {
             }
         }
         connection.start(queue: queue)
-        receiveRequest(on: connection)
+        receiveRequest(on: connection, accumulated: Data())
     }
 
-    private func receiveRequest(on connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 8_192) { [weak self] data, _, _, error in
+    private func receiveRequest(on connection: NWConnection, accumulated: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 8_192) { [weak self] data, _, isComplete, error in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let error {
@@ -167,8 +171,24 @@ final class FrameStreamingServer {
                     self.onFailure?(error.localizedDescription)
                     return
                 }
-                guard let data,
-                      let request = String(data: data, encoding: .utf8),
+                var requestData = accumulated
+                if let data {
+                    requestData.append(data)
+                }
+                guard requestData.count <= 65_536 else {
+                    self.sendResponse(
+                        status: "413 Payload Too Large",
+                        contentType: "text/plain; charset=utf-8",
+                        body: Data("Request too large".utf8),
+                        to: connection
+                    )
+                    return
+                }
+                guard requestData.range(of: Data("\r\n\r\n".utf8)) != nil || isComplete else {
+                    self.receiveRequest(on: connection, accumulated: requestData)
+                    return
+                }
+                guard let request = String(data: requestData, encoding: .utf8),
                       let firstLine = request.split(separator: "\r\n").first else {
                     self.sendNotFound(to: connection)
                     return
@@ -178,18 +198,29 @@ final class FrameStreamingServer {
                     self.sendNotFound(to: connection)
                     return
                 }
-                self.route(path: String(parts[1]), connection: connection)
+                self.route(method: String(parts[0]), path: String(parts[1]), connection: connection)
             }
         }
     }
 
-    private func route(path: String, connection: NWConnection) {
+    private func route(method: String, path: String, connection: NWConnection) {
         if path == "/" {
-            sendHTML(to: connection)
+            sendHTML(streamPath: "/stream.mjpeg", to: connection)
         } else if path == "/manifest.json" {
             sendManifest(to: connection)
         } else if path == "/stream.mjpeg" {
             beginStream(.primary, connection: connection)
+        } else if method == "POST", path.hasPrefix("/api/v1/stream/start") {
+            handleStartRequest(path: path, connection: connection)
+        } else if method == "GET", path == "/api/v1/status" {
+            sendStatus(to: connection)
+        } else if path.hasPrefix("/display/"), !path.hasSuffix(".mjpeg") {
+            let rawID = path.replacingOccurrences(of: "/display/", with: "")
+            guard let id = CGDirectDisplayID(rawID), displays.contains(where: { $0.id == id }) else {
+                sendNotFound(to: connection)
+                return
+            }
+            sendHTML(streamPath: "/display/\(id).mjpeg", to: connection)
         } else if path.hasPrefix("/display/"), path.hasSuffix(".mjpeg") {
             let rawID = path
                 .replacingOccurrences(of: "/display/", with: "")
@@ -201,6 +232,34 @@ final class FrameStreamingServer {
             beginStream(.display(id), connection: connection)
         } else {
             sendNotFound(to: connection)
+        }
+    }
+
+    private func handleStartRequest(path: String, connection: NWConnection) {
+        guard let components = URLComponents(string: "http://localhost\(path)"),
+              let rawLayout = components.queryItems?.first(where: { $0.name == "layout" })?.value,
+              let requestedLayout = StreamLayout(rawValue: rawLayout) else {
+            sendAPIError("A valid layout query parameter is required.", status: "400 Bad Request", to: connection)
+            return
+        }
+        guard let onStartRequested else {
+            sendAPIError("The capture controller is unavailable.", status: "503 Service Unavailable", to: connection)
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await onStartRequested(requestedLayout)
+                guard let session = self.makeRemoteSession() else {
+                    self.sendAPIError("The stream address is not ready.", status: "503 Service Unavailable", to: connection)
+                    return
+                }
+                let body = (try? JSONEncoder().encode(session)) ?? Data()
+                self.sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
+            } catch {
+                self.sendAPIError(error.localizedDescription, status: "409 Conflict", to: connection)
+            }
         }
     }
 
@@ -232,13 +291,13 @@ final class FrameStreamingServer {
         })
     }
 
-    private func sendHTML(to connection: NWConnection) {
+    private func sendHTML(streamPath: String, to connection: NWConnection) {
         let html = """
         <!doctype html>
         <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
         <title>ExtendReality Mac</title>
         <style>html,body{margin:0;background:#090b10;color:white;font:15px system-ui;height:100%}body{display:grid;place-items:center}img{max-width:100%;max-height:100%;object-fit:contain}</style>
-        <img src="/stream.mjpeg" alt="ExtendReality display stream">
+        <img src="\(streamPath)" alt="ExtendReality display stream">
         """
         sendResponse(status: "200 OK", contentType: "text/html; charset=utf-8", body: Data(html.utf8), to: connection)
     }
@@ -260,6 +319,48 @@ final class FrameStreamingServer {
         ]
         let body = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])) ?? Data("{}".utf8)
         sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
+    }
+
+    private func sendStatus(to connection: NWConnection) {
+        let payload: [String: Any] = [
+            "version": 1,
+            "layout": layout.rawValue,
+            "ready": publicAddress != nil,
+            "streaming": !latestFrames.isEmpty || latestComposite != nil,
+            "viewers": clients.count,
+        ]
+        let body = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])) ?? Data("{}".utf8)
+        sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
+    }
+
+    private func makeRemoteSession() -> RemoteStreamSession? {
+        guard let publicAddress else { return nil }
+        let endpoints: [RemoteStreamEndpoint]
+        if layout == .multiple {
+            endpoints = displays.map { display in
+                RemoteStreamEndpoint(
+                    id: String(display.id),
+                    name: display.name,
+                    url: publicAddress
+                        .appendingPathComponent("display")
+                        .appendingPathComponent(String(display.id))
+                )
+            }
+        } else {
+            endpoints = [
+                RemoteStreamEndpoint(
+                    id: "primary",
+                    name: layout == .ultrawide ? "Mac Ultrawide" : (displays.first?.name ?? "Mac"),
+                    url: publicAddress
+                )
+            ]
+        }
+        return RemoteStreamSession(version: 1, layout: layout, streams: endpoints)
+    }
+
+    private func sendAPIError(_ message: String, status: String, to connection: NWConnection) {
+        let body = (try? JSONEncoder().encode(RemoteStreamAPIError(error: message))) ?? Data()
+        sendResponse(status: status, contentType: "application/json", body: body, to: connection)
     }
 
     private func sendNotFound(to connection: NWConnection) {
