@@ -30,6 +30,7 @@ enum WindowKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
 enum WindowSource: Codable, Equatable, Sendable {
     case browser(url: String)
+    case pwa(PWAInstallation, displayMode: PWADisplayMode)
     case gallery
     case youtube(videoID: String?)
     case remoteDesktop(host: String?)
@@ -37,6 +38,7 @@ enum WindowSource: Codable, Equatable, Sendable {
     var kind: WindowKind {
         switch self {
         case .browser: .browser
+        case .pwa: .browser
         case .gallery: .gallery
         case .youtube: .youtube
         case .remoteDesktop: .remoteDesktop
@@ -54,6 +56,8 @@ enum WindowSource: Codable, Equatable, Sendable {
 }
 
 struct WindowTransform3DoF: Codable, Equatable, Sendable {
+    static let virtualDistanceRange = 0.65 ... 1.8
+
     var yaw: Double
     var pitch: Double
     var virtualDistance: Double
@@ -71,7 +75,7 @@ struct WindowTransform3DoF: Codable, Equatable, Sendable {
     mutating func clamp() {
         yaw = yaw.clamped(to: -42 ... 42)
         pitch = pitch.clamped(to: -24 ... 24)
-        virtualDistance = virtualDistance.clamped(to: 0.65 ... 1.8)
+        virtualDistance = virtualDistance.clamped(to: Self.virtualDistanceRange)
         width = width.clamped(to: 0.35 ... 0.95)
         height = height.clamped(to: 0.30 ... 0.90)
     }
@@ -86,6 +90,14 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
     var isMinimized: Bool
 
     var kind: WindowKind { source.kind }
+
+    var systemImage: String {
+        switch source {
+        case .pwa(_, displayMode: .widget): "rectangle.3.group.fill"
+        case .pwa: "app.fill"
+        default: kind.systemImage
+        }
+    }
 
     init(
         id: UUID = UUID(),
@@ -130,4 +142,3 @@ extension Comparable {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }
-

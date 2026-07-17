@@ -7,11 +7,15 @@ enum WindowChromeRegion: Equatable {
     case surface
     case titleBar
     case moveHandle
+    case moveFartherButton
+    case moveCloserButton
     case minimizeButton
     case closeButton
 }
 
 enum WindowChromeAction: Equatable {
+    case moveFarther
+    case moveCloser
     case minimize
     case close
 }
@@ -49,8 +53,14 @@ struct WindowChromeLayout: Equatable {
         if point.x < Self.controlWidth {
             return .closeButton
         }
+        if point.x < Self.controlWidth * 2 {
+            return .moveFartherButton
+        }
         if point.x >= max(Self.controlWidth, frame.width - Self.controlWidth) {
             return .minimizeButton
+        }
+        if point.x >= max(Self.controlWidth * 2, frame.width - Self.controlWidth * 2) {
+            return .moveCloserButton
         }
         return .moveHandle
     }
@@ -358,6 +368,10 @@ final class InputRouter {
             chromeActionHandler?(windowID, .close)
         case .minimizeButton where chromeRegion(in: windowID) == .minimizeButton:
             chromeActionHandler?(windowID, .minimize)
+        case .moveFartherButton where chromeRegion(in: windowID) == .moveFartherButton:
+            chromeActionHandler?(windowID, .moveFarther)
+        case .moveCloserButton where chromeRegion(in: windowID) == .moveCloserButton:
+            chromeActionHandler?(windowID, .moveCloser)
         default:
             break
         }
@@ -417,7 +431,7 @@ final class InputRouter {
         guard let windowID else { return nil }
         let region = chromeRegion(in: windowID)
         switch region {
-        case .closeButton, .minimizeButton, .moveHandle:
+        case .closeButton, .minimizeButton, .moveFartherButton, .moveCloserButton, .moveHandle:
             return .windowChrome(windowID, region)
         case .outside, .surface, .titleBar:
             return nil

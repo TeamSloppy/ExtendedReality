@@ -57,6 +57,13 @@ struct SpatialCanvasView: View {
 
                 canvasCursor(in: proxy.size)
                     .zIndex(20_000)
+
+                if let pair = activeSpatialPhotoPair {
+                    SpatialPhotoSideBySideView(pair: pair)
+                        .background(Color.black)
+                        .transition(.opacity)
+                        .zIndex(30_000)
+                }
             }
             .coordinateSpace(name: Self.coordinateSpace)
             .onPreferenceChange(StatusBarHitFramePreferenceKey.self) { frames in
@@ -69,6 +76,15 @@ struct SpatialCanvasView: View {
         }
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
+    }
+
+    private var activeSpatialPhotoPair: SpatialPhotoStereoPair? {
+        guard !workspace.isAppSwitcherPresented,
+              let window = workspace.activeWindow,
+              case .gallery = window.source else { return nil }
+        let session = environment.surfaces.mediaSession(for: window.id)
+        guard session.presentationMode == .spatial3D else { return nil }
+        return session.spatialPhoto
     }
 
     private func canvasCursor(in size: CGSize) -> some View {
@@ -194,7 +210,7 @@ private struct AppSwitcherOverlay: View {
         let accent = isHovered ? Color.orange : isActive ? Color.cyan : Color.white.opacity(0.16)
 
         return VStack(spacing: 13) {
-            Image(systemName: window.kind.systemImage)
+            Image(systemName: window.systemImage)
                 .font(.system(size: min(48, height * 0.3), weight: .semibold))
                 .foregroundStyle(isHovered ? .orange : isActive ? .cyan : .white.opacity(0.86))
 
@@ -516,7 +532,7 @@ private struct SpatialWindowChrome: View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(systemName: window.kind.systemImage)
+                    Image(systemName: window.systemImage)
                     Text(window.title)
                         .lineLimit(1)
                     Spacer()
@@ -576,6 +592,14 @@ private struct SpatialWindowOrnament: View {
                 environment.closeWindow(windowID)
             }
 
+            ornamentButton(
+                title: "Move farther",
+                systemImage: "minus.magnifyingglass",
+                tint: .cyan
+            ) {
+                environment.workspace.adjustWindowDistance(windowID, by: 0.15)
+            }
+
             ZStack {
                 Color.clear
                 Capsule()
@@ -588,6 +612,14 @@ private struct SpatialWindowOrnament: View {
             .accessibilityElement()
             .accessibilityLabel("Move window")
             .accessibilityHint("Drag to reposition the window")
+
+            ornamentButton(
+                title: "Move closer",
+                systemImage: "plus.magnifyingglass",
+                tint: .cyan
+            ) {
+                environment.workspace.adjustWindowDistance(windowID, by: -0.15)
+            }
 
             ornamentButton(
                 title: "Minimize",

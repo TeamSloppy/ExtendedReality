@@ -20,6 +20,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ExtendRealityPWACatalogURL</key>
+	<string></string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -29,8 +31,20 @@
 	<array>
 		<string>_rfb._tcp.</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>ExtendReality lets you grant selected web apps access to the camera.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ExtendReality connects to your Mac for remote desktop sessions on the local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ExtendReality lets you grant selected web apps access to the microphone.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ExtendReality uses your location while the app is open to provide location-aware spatial apps.</string>
+	<key>NSLocationDefaultAccuracyReduced</key>
+	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>ExtendReality reads your steps, active energy, and heart rate to show a private activity summary.</string>
+	<key>NSFocusStatusUsageDescription</key>
+	<string>ExtendReality reads whether Focus is active so spatial apps can respect your availability.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

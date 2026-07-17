@@ -122,6 +122,23 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(router.chromeRegion(in: id), .moveHandle)
     }
 
+    func testWindowDistanceButtonsRunChromeActions() {
+        let router = InputRouter()
+        let id = UUID()
+        var receivedActions: [WindowChromeAction] = []
+        router.updateWindowLayout(WindowChromeLayout(size: CGSize(width: 1_000, height: 500)), for: id)
+        router.chromeActionHandler = { _, action in receivedActions.append(action) }
+
+        router.movePointer(to: CGPoint(x: 0.08, y: 0.98), in: id)
+        router.pointerDown(in: id)
+        router.pointerUp(in: id)
+        router.movePointer(to: CGPoint(x: 0.92, y: 0.98), in: id)
+        router.pointerDown(in: id)
+        router.pointerUp(in: id)
+
+        XCTAssertEqual(receivedActions, [.moveFarther, .moveCloser])
+    }
+
     func testDashboardClickRunsActionWhenThereIsNoActiveWindow() {
         let router = InputRouter()
         let itemID = UUID()

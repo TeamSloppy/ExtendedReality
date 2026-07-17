@@ -35,6 +35,7 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
             .environment(environment.dashboard)
             .environment(environment.inputRouter)
             .environment(environment.headPose)
+            .environment(environment.systemData)
 
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = UIHostingController(rootView: root)

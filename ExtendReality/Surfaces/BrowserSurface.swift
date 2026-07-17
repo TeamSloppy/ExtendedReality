@@ -3,23 +3,78 @@ import SwiftUI
 import WebKit
 
 @MainActor
+private final class BrowserDataMessageHandler: NSObject, WKScriptMessageHandlerWithReply {
+    weak var session: BrowserSession?
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage,
+        replyHandler: @escaping @MainActor (Any?, String?) -> Void
+    ) {
+        guard let session else {
+            replyHandler(nil, "The ExtendReality host is no longer available.")
+            return
+        }
+        session.handleHostDataMessage(message, replyHandler: replyHandler)
+    }
+}
+
+@MainActor
 @Observable
-final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate {
+final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDelegate {
     var address: String
     private(set) var title = "Browser"
     private(set) var isLoading = false
     private(set) var canGoBack = false
     private(set) var canGoForward = false
     @ObservationIgnored let webView: WKWebView
+    @ObservationIgnored private let navigationPolicy: PWAOriginPolicy?
+    @ObservationIgnored private let capabilityProvider: (PWACapability) -> Bool
+    @ObservationIgnored private let dataProvider: ((PWACapability) throws -> [String: Any])?
+    @ObservationIgnored private let dataMessageHandler: BrowserDataMessageHandler?
 
-    init(initialURL: String, loadsContent: Bool = true) {
+    private static let dataMessageHandlerName = "extendRealityData"
+
+    init(
+        initialURL: String,
+        loadsContent: Bool = true,
+        websiteDataStore: WKWebsiteDataStore = .default(),
+        navigationPolicy: PWAOriginPolicy? = nil,
+        capabilityProvider: @escaping (PWACapability) -> Bool = { _ in false },
+        dataProvider: ((PWACapability) throws -> [String: Any])? = nil
+    ) {
         address = initialURL
+        self.navigationPolicy = navigationPolicy
+        self.capabilityProvider = capabilityProvider
+        self.dataProvider = dataProvider
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        configuration.websiteDataStore = .default()
+        configuration.websiteDataStore = websiteDataStore
+        let dataMessageHandler: BrowserDataMessageHandler?
+        if navigationPolicy != nil, dataProvider != nil {
+            let handler = BrowserDataMessageHandler()
+            dataMessageHandler = handler
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source: Self.hostAPIScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                )
+            )
+            configuration.userContentController.addScriptMessageHandler(
+                handler,
+                contentWorld: .page,
+                name: Self.dataMessageHandlerName
+            )
+        } else {
+            dataMessageHandler = nil
+        }
+        self.dataMessageHandler = dataMessageHandler
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
+        dataMessageHandler?.session = self
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = false
         if loadsContent {
             load(initialURL)
@@ -97,6 +152,74 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate {
         isLoading = false
     }
 
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction
+    ) async -> WKNavigationActionPolicy {
+        guard navigationAction.targetFrame?.isMainFrame != false,
+              let navigationPolicy,
+              let url = navigationAction.request.url else {
+            return .allow
+        }
+        guard navigationPolicy.allowsTopLevelNavigation(to: url) else {
+            if navigationAction.navigationType == .linkActivated,
+               ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+                await UIApplication.shared.open(url)
+            }
+            return .cancel
+        }
+        return .allow
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+        initiatedBy frame: WKFrameInfo,
+        type: WKMediaCaptureType
+    ) async -> WKPermissionDecision {
+        guard navigationPolicy != nil else {
+            return .prompt
+        }
+        let granted: Bool
+        switch type {
+        case .camera:
+            granted = capabilityProvider(.camera)
+        case .microphone:
+            granted = capabilityProvider(.microphone)
+        case .cameraAndMicrophone:
+            granted = capabilityProvider(.camera) && capabilityProvider(.microphone)
+        @unknown default:
+            granted = false
+        }
+        return granted ? .grant : .deny
+    }
+
+    fileprivate func handleHostDataMessage(
+        _ message: WKScriptMessage,
+        replyHandler: @escaping @MainActor (Any?, String?) -> Void
+    ) {
+        guard message.name == Self.dataMessageHandlerName,
+              message.frameInfo.isMainFrame,
+              navigationPolicy != nil,
+              let dataProvider,
+              let rawCapability = message.body as? String,
+              let capability = PWACapability(rawValue: rawCapability),
+              [.location, .health, .focusStatus].contains(capability) else {
+            replyHandler(nil, "Invalid ExtendReality host API request.")
+            return
+        }
+        guard capabilityProvider(capability) else {
+            replyHandler(nil, "The app has not been granted \(capability.title) access.")
+            return
+        }
+
+        do {
+            replyHandler(try dataProvider(capability), nil)
+        } catch {
+            replyHandler(nil, error.localizedDescription)
+        }
+    }
+
     private func installCursor() {
         webView.evaluateJavaScript("""
             (() => {
@@ -134,6 +257,24 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate {
               let result = String(data: data, encoding: .utf8) else { return "\"\"" }
         return result
     }
+
+    private static let hostAPIScript = """
+        (() => {
+          const handler = window.webkit?.messageHandlers?.extendRealityData;
+          if (!handler || window.extendReality) return;
+          const read = capability => handler.postMessage(capability);
+          Object.defineProperty(window, 'extendReality', {
+            value: Object.freeze({
+              version: 2,
+              getLocation: () => read('location'),
+              getHealthSummary: () => read('health'),
+              getFocusStatus: () => read('focusStatus')
+            }),
+            configurable: false,
+            writable: false
+          });
+        })();
+        """
 }
 
 struct BrowserSurfaceView: UIViewRepresentable {

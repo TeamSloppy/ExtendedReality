@@ -9,6 +9,8 @@ final class AppEnvironment {
     let modelContainer: ModelContainer
     let workspace: WorkspaceStore
     let dashboard: DashboardStore
+    let pwaStore: PWAStore
+    let systemData: SystemDataStore
     let inputRouter: InputRouter
     let surfaces: SurfaceRegistry
     let headPoseProvider: any HeadPoseProvider
@@ -40,10 +42,26 @@ final class AppEnvironment {
         let persistence = WorkspacePersistence(container: modelContainer)
         workspace = WorkspaceStore(persistence: persistence)
         dashboard = DashboardStore(defaults: dashboardDefaults)
+        let pwaStore = PWAStore(defaults: dashboardDefaults)
+        self.pwaStore = pwaStore
+        let systemData = SystemDataStore(
+            defaults: dashboardDefaults,
+            loadsSystemData: !isRunningTests && !storesDataInMemory
+        )
+        self.systemData = systemData
         inputRouter = InputRouter()
         keychain = KeychainStore(service: keychainService)
         youtubeAPI = YouTubeAPIClient()
-        surfaces = SurfaceRegistry(inputRouter: inputRouter, keychain: keychain)
+        surfaces = SurfaceRegistry(
+            inputRouter: inputRouter,
+            keychain: keychain,
+            pwaCapabilityProvider: { appID, capability in
+                pwaStore.installation(for: appID)?.grants(capability) == true
+            },
+            pwaDataProvider: { capability in
+                try systemData.pwaPayload(for: capability)
+            }
+        )
         let provider: any HeadPoseProvider = isRunningTests
             ? HeadLockedPoseProvider()
             : AirPodsHeadPoseProvider()
@@ -63,6 +81,10 @@ final class AppEnvironment {
         )
         inputRouter.chromeActionHandler = { [weak self] windowID, action in
             switch action {
+            case .moveFarther:
+                self?.workspace.adjustWindowDistance(windowID, by: 0.15)
+            case .moveCloser:
+                self?.workspace.adjustWindowDistance(windowID, by: -0.15)
             case .minimize:
                 self?.minimizeWindow(windowID)
             case .close:
@@ -151,11 +173,54 @@ final class AppEnvironment {
         }
     }
 
+    @discardableResult
+    func installPWA(
+        _ manifest: PWAAppManifest,
+        grantedCapabilities: Set<PWACapability>
+    ) throws -> PWAInstallation {
+        let installation = try pwaStore.install(
+            manifest,
+            grantedCapabilities: grantedCapabilities
+        )
+        dashboard.addPWA(installation)
+        return installation
+    }
+
+    @discardableResult
+    func openPWA(_ installation: PWAInstallation, displayMode: PWADisplayMode) -> WorkspaceWindow {
+        let window = workspace.addWindow(
+            title: installation.manifest.name,
+            source: .pwa(installation, displayMode: displayMode)
+        )
+        surfaces.prepare(for: [window])
+        watchRemote.syncState()
+        return window
+    }
+
+    func uninstallPWA(_ appID: String) async throws {
+        guard let installation = pwaStore.installation(for: appID) else { return }
+        let windowIDs = workspace.windows.compactMap { window -> UUID? in
+            if case .pwa(let installation, _) = window.source, installation.id == appID {
+                return window.id
+            }
+            return nil
+        }
+        for windowID in windowIDs {
+            closeWindow(windowID)
+        }
+        try await surfaces.removeWebsiteData(for: installation.dataStoreIdentifier)
+        dashboard.removePWA(appID)
+        pwaStore.uninstall(appID)
+    }
+
     func activateDashboardItem(_ id: UUID) {
         guard let item = dashboard.item(id: id) else { return }
         switch item.content {
         case .app(let kind):
             openWindow(kind)
+        case .pwa(let installation):
+            let mode = installation.manifest.displayModes.contains(.window) ? PWADisplayMode.window : .widget
+            openPWA(installation, displayMode: mode)
         case .bookmark(let bookmark):
             let window = workspace.addWindow(
                 title: bookmark.title,
@@ -222,6 +287,7 @@ extension View {
             .environment(environment.dashboard)
             .environment(environment.inputRouter)
             .environment(environment.headPose)
+            .environment(environment.systemData)
             .defaultAppStorage(PreviewFixtures.userDefaults)
     }
 }

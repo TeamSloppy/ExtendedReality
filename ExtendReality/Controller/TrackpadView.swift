@@ -139,11 +139,11 @@ struct TrackpadView: View {
     private var instructionText: String {
         switch mode {
         case .trackpad:
-            "drag to move · tap to click · two fingers to scroll"
+            "drag to move · tap to click · pinch to zoom · two fingers to scroll"
         case .laser where laserController.isActive:
-            "move the iPhone to aim · tap to click"
+            "move the iPhone to aim · tap to click · pinch to zoom"
         case .laser:
-            "drag to point · tap to click"
+            "drag to point · tap to click · pinch to zoom"
         }
     }
 
@@ -427,7 +427,7 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             case .changed:
                 let delta = recognizer.scale / previousScale
                 previousScale = recognizer.scale
-                parent.workspace.scaleActiveWindow(by: delta)
+                parent.workspace.zoomActiveWindow(by: delta)
             case .ended, .cancelled, .failed:
                 previousScale = 1
             default:

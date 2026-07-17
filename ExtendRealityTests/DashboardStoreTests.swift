@@ -57,6 +57,42 @@ final class DashboardStoreTests: XCTestCase {
         XCTAssertEqual(store.selectedPage, 0)
     }
 
+    func testPWAIsAddedOnceAndPersistsOnDashboard() throws {
+        let defaults = makeDefaults()
+        let key = #function
+        let store = DashboardStore(defaults: defaults, storageKey: key)
+        let manifest = PWAAppManifest(
+            id: "com.example.tasks",
+            name: "Tasks",
+            summary: "Task manager",
+            developer: "Example",
+            version: "1.0.0",
+            launchURL: URL(string: "https://tasks.example.com")!,
+            universalLink: URL(string: "https://tasks.example.com/apps/tasks")!,
+            allowedOrigins: ["https://tasks.example.com"],
+            displayModes: [.window],
+            requestedCapabilities: [],
+            minimumAge: 4,
+            accentHex: "#2563EB"
+        )
+        let installation = PWAInstallation(
+            manifest: manifest,
+            installedAt: .now,
+            dataStoreIdentifier: UUID(),
+            grantedCapabilities: []
+        )
+
+        store.addPWA(installation)
+        store.addPWA(installation)
+        let restored = DashboardStore(defaults: defaults, storageKey: key)
+        let matches = restored.launchers.filter {
+            if case .pwa(let app) = $0.content { return app.id == installation.id }
+            return false
+        }
+
+        XCTAssertEqual(matches.count, 1)
+    }
+
     private func makeDefaults() -> UserDefaults {
         let suiteName = "DashboardStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

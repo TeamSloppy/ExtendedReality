@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.vladprusakov
   deploymentTarget:
     iOS: "18.0"
+    macOS: "15.0"
     watchOS: "11.0"
   createIntermediateGroups: true
 settings:
@@ -36,6 +37,13 @@ targets:
           - _rfb._tcp.
         NSPhotoLibraryUsageDescription: ExtendReality displays photos and videos you select in the glasses workspace.
         NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.
+        NSCameraUsageDescription: ExtendReality lets you grant selected web apps access to the camera.
+        NSMicrophoneUsageDescription: ExtendReality lets you grant selected web apps access to the microphone.
+        NSLocationWhenInUseUsageDescription: ExtendReality uses your location while the app is open to provide location-aware spatial apps.
+        NSLocationDefaultAccuracyReduced: true
+        NSHealthShareUsageDescription: ExtendReality reads your steps, active energy, and heart rate to show a private activity summary.
+        NSFocusStatusUsageDescription: ExtendReality reads whether Focus is active so spatial apps can respect your availability.
+        ExtendRealityPWACatalogURL: ""
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:
@@ -56,6 +64,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SUPPORTS_MACCATALYST: NO
+        CODE_SIGN_ENTITLEMENTS: ExtendReality/Resources/ExtendReality.entitlements
     dependencies:
       - package: RoyalVNCKit
         product: RoyalVNCKit
@@ -82,6 +91,38 @@ targets:
         PRODUCT_NAME: ExtendReality Watch
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SKIP_INSTALL: YES
+  ExtendRealityMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: ExtendRealityMac
+    info:
+      path: ExtendRealityMac/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ExtendReality Mac
+        LSApplicationCategoryType: public.app-category.utilities
+        NSScreenCaptureUsageDescription: ExtendReality streams the displays you select to your spatial workspace.
+        NSLocalNetworkUsageDescription: ExtendReality sends display streams to your iPhone on the local network.
+        NSBonjourServices:
+          - _extend-reality._tcp.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.mac
+        PRODUCT_NAME: ExtendRealityMac
+        CODE_SIGN_ENTITLEMENTS: ExtendRealityMac/Resources/ExtendRealityMac.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  ExtendRealityMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ExtendRealityMacTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendRealityMacTests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: ExtendRealityMac
   ExtendRealityTests:
     type: bundle.unit-test
     platform: iOS
@@ -102,6 +143,10 @@ schemes:
         ExtendReality: all
         ExtendRealityWatch: all
         ExtendRealityTests: [test]
+    run:
+      commandLineArguments:
+        "-debugSocketURL": true
+        "ws://192.168.3.202:4173/ws?role=device&id=iphone": true
     test:
       targets:
         - ExtendRealityTests
@@ -109,3 +154,11 @@ schemes:
     build:
       targets:
         ExtendRealityWatch: all
+  ExtendRealityMac:
+    build:
+      targets:
+        ExtendRealityMac: all
+        ExtendRealityMacTests: [test]
+    test:
+      targets:
+        - ExtendRealityMacTests

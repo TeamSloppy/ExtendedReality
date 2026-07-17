@@ -28,8 +28,15 @@ struct ControllerRootView: View {
         ) { result in
             guard let id = workspace.activeWindowID,
                   let session = environment.surfaces.mediaSession(for: id) as MediaSession? else { return }
-            if case .success(let url) = result {
-                try? session.importFile(url)
+            switch result {
+            case .success(let url):
+                do {
+                    try session.importFile(url)
+                } catch {
+                    session.reportImportError(error)
+                }
+            case .failure(let error):
+                session.reportImportError(error)
             }
         }
         .onChange(of: selectedPhoto, handleSelectedPhotoChange)
@@ -81,16 +88,28 @@ struct ControllerRootView: View {
         let session = environment.surfaces.mediaSession(for: id)
         let videoType = item.supportedContentTypes.first(where: { $0.conforms(to: .movie) })
         Task {
-            if let data = try? await item.loadTransferable(type: Data.self) {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    throw MediaImportError.unavailablePhotoData
+                }
                 await MainActor.run {
-                    if let videoType {
-                        try? session.importMediaData(
-                            data,
-                            filenameExtension: videoType.preferredFilenameExtension ?? "mov"
-                        )
-                    } else {
-                        session.loadPhotoData(data)
+                    do {
+                        if let videoType {
+                            try session.importMediaData(
+                                data,
+                                filenameExtension: videoType.preferredFilenameExtension ?? "mov"
+                            )
+                        } else {
+                            try session.loadPhotoData(data)
+                        }
+                    } catch {
+                        session.reportImportError(error)
                     }
+                    selectedPhoto = nil
+                }
+            } catch {
+                await MainActor.run {
+                    session.reportImportError(error)
                     selectedPhoto = nil
                 }
             }
@@ -143,6 +162,22 @@ struct ControllerRootView: View {
     private var quickActionsDock: some View {
         HStack(spacing: 10) {
             keyboardDock
+
+            if workspace.activeWindow?.kind == .gallery {
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .any(of: [.images, .videos]),
+                    preferredItemEncoding: .current
+                ) {
+                    ControllerQuickActionLabel(
+                        title: "Media",
+                        systemImage: "photo.badge.plus"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Choose photo or video")
+                .accessibilityIdentifier("gallery.importMedia")
+            }
 
             ControllerQuickActionButton(
                 title: "Center",
@@ -217,41 +252,14 @@ private struct ControllerQuickActionButton: View {
     var badge: Int?
     let action: () -> Void
 
-    @Environment(\.isEnabled) private var isEnabled
-
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(isSelected ? Color.cyan : Color.primary)
-            .frame(width: 72, height: 76)
-            .background(
-                isSelected
-                    ? Color.cyan.opacity(0.14)
-                    : Color(uiColor: .secondarySystemBackground),
-                in: RoundedRectangle(cornerRadius: 24)
+            ControllerQuickActionLabel(
+                title: title,
+                systemImage: systemImage,
+                isSelected: isSelected,
+                badge: badge
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(isSelected ? Color.cyan.opacity(0.7) : .white.opacity(0.11), lineWidth: 1)
-            }
-            .overlay(alignment: .topTrailing) {
-                if let badge, badge > 0 {
-                    Text("\(badge)")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .frame(minWidth: 20, minHeight: 20)
-                        .background(.cyan, in: Capsule())
-                        .offset(x: 4, y: -4)
-                }
-            }
-            .opacity(isEnabled ? 1 : 0.42)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -259,7 +267,58 @@ private struct ControllerQuickActionButton: View {
     }
 }
 
+private struct ControllerQuickActionLabel: View {
+    let title: String
+    let systemImage: String
+    var isSelected = false
+    var badge: Int?
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(isSelected ? Color.cyan : Color.primary)
+        .frame(width: 72, height: 76)
+        .background(
+            isSelected
+                ? Color.cyan.opacity(0.14)
+                : Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 24)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(isSelected ? Color.cyan.opacity(0.7) : .white.opacity(0.11), lineWidth: 1)
+        }
+        .overlay(alignment: .topTrailing) {
+            if let badge, badge > 0 {
+                Text("\(badge)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(.cyan, in: Capsule())
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .opacity(isEnabled ? 1 : 0.42)
+    }
+}
+
 private struct ControllerToolsSheet: View {
+    private enum Destination: String, Identifiable {
+        case settings
+        case dashboard
+        case pwaStore
+
+        var id: String { rawValue }
+    }
+
     let environment: AppEnvironment
     @Binding var isImportingFile: Bool
     @Binding var selectedPhoto: PhotosPickerItem?
@@ -267,8 +326,7 @@ private struct ControllerToolsSheet: View {
     @Environment(WorkspaceStore.self) private var workspace
     @Environment(InputRouter.self) private var inputRouter
     @Environment(HeadPoseController.self) private var headPose
-    @State private var showsSettings = false
-    @State private var showsDashboardEditor = false
+    @State private var destination: Destination?
 
     var body: some View {
         NavigationStack {
@@ -276,12 +334,14 @@ private struct ControllerToolsSheet: View {
                 VStack(spacing: 18) {
                     connectionStatus
                     launcher
+                    pwaStoreSection
                     dashboardSection
                     windowStrip
 
                     if let active = workspace.activeWindow {
                         activeHeader(active)
                         modeControls
+                        windowDistanceControls(active)
                         ActiveWindowControls(
                             window: active,
                             environment: environment,
@@ -305,16 +365,20 @@ private struct ControllerToolsSheet: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Settings", systemImage: "gear") {
                         ControllerHaptics.selection()
-                        showsSettings = true
+                        destination = .settings
                     }
                 }
             }
         }
-        .sheet(isPresented: $showsSettings) {
-            SettingsView()
-        }
-        .sheet(isPresented: $showsDashboardEditor) {
-            DashboardEditorView(dashboard: environment.dashboard)
+        .sheet(item: $destination) { destination in
+            switch destination {
+            case .settings:
+                SettingsView()
+            case .dashboard:
+                DashboardEditorView(dashboard: environment.dashboard)
+            case .pwaStore:
+                PWAStoreView(environment: environment)
+            }
         }
     }
 
@@ -387,7 +451,30 @@ private struct ControllerToolsSheet: View {
             }
             Spacer()
             Button("Customize", systemImage: "slider.horizontal.3") {
-                showsDashboardEditor = true
+                destination = .dashboard
+                ControllerHaptics.selection()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var pwaStoreSection: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "shippingbox.fill")
+                .font(.title2)
+                .foregroundStyle(.cyan)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Web App Store")
+                    .font(.headline)
+                Text("\(environment.pwaStore.installations.count) installed · curated catalog")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Open", systemImage: "chevron.right") {
+                destination = .pwaStore
                 ControllerHaptics.selection()
             }
             .buttonStyle(.bordered)
@@ -404,7 +491,7 @@ private struct ControllerToolsSheet: View {
                         workspace.focus(window.id)
                         ControllerHaptics.selection()
                     } label: {
-                        Label(window.title, systemImage: window.kind.systemImage)
+                        Label(window.title, systemImage: window.systemImage)
                             .lineLimit(1)
                             .padding(.horizontal, 4)
                     }
@@ -417,7 +504,7 @@ private struct ControllerToolsSheet: View {
 
     private func activeHeader(_ window: WorkspaceWindow) -> some View {
         HStack {
-            Label(window.title, systemImage: window.kind.systemImage)
+            Label(window.title, systemImage: window.systemImage)
                 .font(.headline)
             Spacer()
             Button("Minimize", systemImage: "minus") {
@@ -460,6 +547,60 @@ private struct ControllerToolsSheet: View {
             .labelStyle(.iconOnly)
         }
     }
+
+    private func windowDistanceControls(_ window: WorkspaceWindow) -> some View {
+        let range = WindowTransform3DoF.virtualDistanceRange
+        let distance = workspace.windows
+            .first(where: { $0.id == window.id })?
+            .transform.virtualDistance ?? window.transform.virtualDistance
+        let progress = (distance - range.lowerBound) / (range.upperBound - range.lowerBound)
+        let percentage = Int((progress * 100).rounded())
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Window distance", systemImage: "viewfinder")
+                    .font(.headline)
+                Spacer()
+                Text("\(percentage)%")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                Button("Closer", systemImage: "plus.magnifyingglass") {
+                    workspace.adjustWindowDistance(window.id, by: -0.15)
+                    ControllerHaptics.selection()
+                }
+                .buttonStyle(.bordered)
+
+                Slider(
+                    value: Binding(
+                        get: {
+                            workspace.windows
+                                .first(where: { $0.id == window.id })?
+                                .transform.virtualDistance ?? distance
+                        },
+                        set: { workspace.setWindowDistance(window.id, to: $0) }
+                    ),
+                    in: range
+                )
+                .accessibilityLabel("Window distance")
+                .accessibilityValue("\(percentage) percent")
+
+                Button("Farther", systemImage: "minus.magnifyingglass") {
+                    workspace.adjustWindowDistance(window.id, by: 0.15)
+                    ControllerHaptics.selection()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Text("You can also pinch anywhere on the trackpad.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
 }
 
 private struct ActiveWindowControls: View {
@@ -469,9 +610,17 @@ private struct ActiveWindowControls: View {
     @Binding var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
-        switch window.kind {
+        switch window.source {
         case .browser:
             BrowserControlsView(session: environment.surfaces.browser(for: window.id))
+        case .pwa(let installation, let displayMode):
+            BrowserControlsView(
+                session: environment.surfaces.pwa(
+                    for: window.id,
+                    installation: installation,
+                    displayMode: displayMode
+                )
+            )
         case .gallery:
             MediaControlsView(
                 session: environment.surfaces.mediaSession(for: window.id),

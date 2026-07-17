@@ -34,23 +34,76 @@ struct MediaControlsView: View {
     @Binding var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
-        HStack {
-            PhotosPicker(selection: $selectedPhoto, matching: .any(of: [.images, .videos])) {
-                Label("Photos", systemImage: "photo.on.rectangle")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .any(of: [.images, .videos]),
+                    preferredItemEncoding: .current
+                ) {
+                    Label("Photos", systemImage: "photo.on.rectangle")
+                }
+                .buttonStyle(.borderedProminent)
+                Button("Files", systemImage: "folder") { isImportingFile = true }
+                    .buttonStyle(.bordered)
+
+                if let fileName = session.fileName {
+                    Spacer()
+                    Text(fileName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            .buttonStyle(.bordered)
-            Button("Files", systemImage: "folder") { isImportingFile = true }
-                .buttonStyle(.bordered)
-            Spacer()
-            Button("Back 10", systemImage: "gobackward.10") { session.seek(seconds: -10) }
-                .labelStyle(.iconOnly)
-            Button(
-                session.isPlaying ? "Pause" : "Play",
-                systemImage: session.isPlaying ? "pause.fill" : "play.fill"
-            ) { session.togglePlayback() }
-            .buttonStyle(.borderedProminent)
-            Button("Forward 10", systemImage: "goforward.10") { session.seek(seconds: 10) }
-                .labelStyle(.iconOnly)
+
+            if session.isSpatialPhoto {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Spatial photo detected", systemImage: "view.3d")
+                        .font(.headline)
+                        .foregroundStyle(.cyan)
+
+                    Picker(
+                        "Presentation",
+                        selection: Binding(
+                            get: { session.presentationMode },
+                            set: { session.setPresentationMode($0) }
+                        )
+                    ) {
+                        ForEach(MediaPresentationMode.allCases) { mode in
+                            Label(mode.title, systemImage: mode.systemImage)
+                                .tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("gallery.presentationMode")
+
+                    if session.presentationMode == .spatial3D {
+                        Text("3D uses the full glasses display. Enable Full SBS (3840×1080) on the XREAL glasses.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if session.isVideo {
+                HStack {
+                    Button("Back 10", systemImage: "gobackward.10") { session.seek(seconds: -10) }
+                    Spacer()
+                    Button(
+                        session.isPlaying ? "Pause" : "Play",
+                        systemImage: session.isPlaying ? "pause.fill" : "play.fill"
+                    ) { session.togglePlayback() }
+                    .buttonStyle(.borderedProminent)
+                    Spacer()
+                    Button("Forward 10", systemImage: "goforward.10") { session.seek(seconds: 10) }
+                }
+            }
+
+            if let error = session.lastErrorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
         .padding(12)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
@@ -203,11 +256,15 @@ struct VNCControlsView: View {
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(HeadPoseController.self) private var headPose
+    @Environment(SystemDataStore.self) private var systemData
     @AppStorage("youtube.apiKey") private var youtubeAPIKey = ""
+    @AppStorage(RemoteDisplayLayout.defaultsKey) private var remoteDisplayLayout = RemoteDisplayLayout.single
 
     var body: some View {
         NavigationStack {
             Form {
+                RemoteDisplayLayoutSettingsSection(selection: $remoteDisplayLayout)
+
                 Section("YouTube Data API") {
                     SecureField("API key", text: $youtubeAPIKey)
                         .textInputAutocapitalization(.never)
@@ -226,6 +283,50 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Section {
+                    LabeledContent("Location", value: systemData.locationAuthorization.title)
+                    if let location = systemData.location {
+                        LabeledContent(
+                            "Coordinates",
+                            value: String(format: "%.4f, %.4f", location.latitude, location.longitude)
+                        )
+                        .monospacedDigit()
+                    }
+                    Button("Allow Location", systemImage: "location.fill") {
+                        systemData.requestLocationAccess()
+                    }
+                    .disabled(systemData.locationAuthorization == .restricted || systemData.locationAuthorization == .unavailable)
+
+                    LabeledContent("Health", value: systemData.healthAuthorization.title)
+                    if let health = systemData.healthSummary {
+                        LabeledContent("Today", value: "\(health.steps.formatted()) steps · \(Int(health.activeEnergyKilocalories.rounded())) kcal")
+                    }
+                    Button("Allow Health Data", systemImage: "heart.text.square.fill") {
+                        Task { await systemData.requestHealthAccess() }
+                    }
+                    .disabled(systemData.healthAuthorization == .unavailable)
+
+                    LabeledContent("Focus Status", value: focusStatusText)
+                    Button("Allow Focus Status", systemImage: "moon.fill") {
+                        systemData.requestFocusAccess()
+                    }
+                    .disabled(systemData.focusAuthorization == .restricted || systemData.focusAuthorization == .unavailable)
+
+                    Button("Refresh Data", systemImage: "arrow.clockwise") {
+                        Task { await systemData.refreshAll() }
+                    }
+                } header: {
+                    Text("System Data")
+                } footer: {
+                    Text("Health access is read-only: today's steps, active energy, and latest heart rate. Location is requested only while ExtendReality is in use. Web apps also need their own per-app permission.")
+                }
+
+                if let error = systemData.lastErrorMessage {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -233,6 +334,17 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var focusStatusText: String {
+        guard systemData.focusAuthorization == .authorized else {
+            return systemData.focusAuthorization.title
+        }
+        return switch systemData.isFocused {
+        case true: "Notifications silenced by Focus"
+        case false: "Focus allows notifications"
+        case nil: "Status unavailable"
         }
     }
 }
@@ -296,5 +408,6 @@ private struct HeadPoseReadout: View {
     let environment = AppEnvironment.preview(windowCount: 0)
     SettingsView()
         .previewEnvironment(environment)
+        .defaultAppStorage(PreviewFixtures.userDefaults)
 }
 #endif

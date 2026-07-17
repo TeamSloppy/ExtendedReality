@@ -3,4 +3,7 @@ DerivedData/
 .build/
 xcuserdata/
 *.xcuserstate
-
+pwa-apps/node_modules/
+pwa-apps/dist/
+pwa-apps/spatial-board/dist/
+pwa-apps/pwa-lab/dist/

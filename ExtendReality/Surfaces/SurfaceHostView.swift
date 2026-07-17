@@ -8,6 +8,14 @@ struct SurfaceHostView: View {
         switch window.source {
         case .browser(let url):
             BrowserSurfaceView(session: environment.surfaces.browser(for: window.id, initialURL: url))
+        case .pwa(let installation, let displayMode):
+            BrowserSurfaceView(
+                session: environment.surfaces.pwa(
+                    for: window.id,
+                    installation: installation,
+                    displayMode: displayMode
+                )
+            )
         case .gallery:
             MediaSurfaceView(session: environment.surfaces.mediaSession(for: window.id))
         case .youtube(let videoID):

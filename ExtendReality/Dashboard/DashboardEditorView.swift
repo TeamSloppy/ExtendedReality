@@ -94,6 +94,10 @@ private struct DashboardEditorRow: View {
         case .app(let kind):
             Image(systemName: kind.systemImage)
                 .foregroundStyle(accent)
+        case .pwa(let installation):
+            Text(installation.manifest.monogram)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(accent)
         case .bookmark(let bookmark):
             Text(bookmark.monogram)
                 .font(.callout.weight(.bold))
@@ -107,6 +111,7 @@ private struct DashboardEditorRow: View {
     private var title: String {
         switch item.content {
         case .app(let kind): kind.title
+        case .pwa(let installation): installation.manifest.name
         case .bookmark(let bookmark): bookmark.title
         case .widget(let kind): kind.title
         }
@@ -115,6 +120,7 @@ private struct DashboardEditorRow: View {
     private var subtitle: String {
         switch item.content {
         case .app: "Application"
+        case .pwa(let installation): "Web app · \(installation.manifest.version)"
         case .bookmark(let bookmark): bookmark.url
         case .widget: "Widget"
         }
@@ -126,6 +132,7 @@ private struct DashboardEditorRow: View {
         case .app(.browser): .cyan
         case .app(.youtube): .red
         case .app(.remoteDesktop): .purple
+        case .pwa: .blue
         case .bookmark(let bookmark): bookmark.accent.swiftUIColor
         case .widget(.calendar), .widget(.focus): .orange
         case .widget(.health): .pink

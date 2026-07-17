@@ -90,4 +90,33 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(store.windows.first(where: { $0.id == browser.id })).isMinimized)
         XCTAssertFalse(store.isAppSwitcherPresented)
     }
+
+    func testWindowCanMoveCloserAndFartherWithinLimits() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+        let window = store.addWindow(kind: .browser)
+
+        store.zoomActiveWindow(by: 1.25)
+        XCTAssertEqual(
+            try XCTUnwrap(store.activeWindow).transform.virtualDistance,
+            0.8,
+            accuracy: 0.001
+        )
+
+        store.setWindowDistance(window.id, to: 100)
+        XCTAssertEqual(
+            try XCTUnwrap(store.activeWindow).transform.virtualDistance,
+            WindowTransform3DoF.virtualDistanceRange.upperBound,
+            accuracy: 0.001
+        )
+
+        store.adjustWindowDistance(window.id, by: -100)
+        XCTAssertEqual(
+            try XCTUnwrap(store.activeWindow).transform.virtualDistance,
+            WindowTransform3DoF.virtualDistanceRange.lowerBound,
+            accuracy: 0.001
+        )
+    }
 }

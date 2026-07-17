@@ -45,6 +45,7 @@ struct DashboardBookmark: Codable, Equatable, Sendable {
 
 enum DashboardItemContent: Codable, Equatable, Sendable {
     case app(WindowKind)
+    case pwa(PWAInstallation)
     case bookmark(DashboardBookmark)
     case widget(DashboardWidgetKind)
 }
@@ -94,7 +95,7 @@ final class DashboardStore {
     var launchers: [DashboardItem] {
         items.filter {
             switch $0.content {
-            case .app, .bookmark: true
+            case .app, .pwa, .bookmark: true
             case .widget: false
             }
         }
@@ -132,6 +133,27 @@ final class DashboardStore {
     func addApp(_ kind: WindowKind) {
         guard !items.contains(where: { $0.content == .app(kind) }) else { return }
         items.append(DashboardItem(content: .app(kind)))
+        save()
+    }
+
+    func addPWA(_ installation: PWAInstallation) {
+        if let index = items.firstIndex(where: {
+            if case .pwa(let existing) = $0.content { return existing.id == installation.id }
+            return false
+        }) {
+            items[index].content = .pwa(installation)
+        } else {
+            items.append(DashboardItem(content: .pwa(installation)))
+        }
+        save()
+    }
+
+    func removePWA(_ appID: String) {
+        items.removeAll(where: {
+            if case .pwa(let installation) = $0.content { return installation.id == appID }
+            return false
+        })
+        clampSelectedPage()
         save()
     }
 

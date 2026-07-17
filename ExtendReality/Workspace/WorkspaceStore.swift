@@ -117,6 +117,30 @@ final class WorkspaceStore {
         }
     }
 
+    func zoomActiveWindow(by magnificationDelta: CGFloat) {
+        guard magnificationDelta.isFinite, magnificationDelta > 0 else { return }
+        mutateActiveWindow { window in
+            window.transform.virtualDistance /= Double(magnificationDelta)
+            window.transform.clamp()
+        }
+    }
+
+    func adjustWindowDistance(_ id: UUID, by delta: Double) {
+        guard delta.isFinite else { return }
+        mutateWindow(id) { window in
+            window.transform.virtualDistance += delta
+            window.transform.clamp()
+        }
+    }
+
+    func setWindowDistance(_ id: UUID, to distance: Double) {
+        guard distance.isFinite else { return }
+        mutateWindow(id) { window in
+            window.transform.virtualDistance = distance
+            window.transform.clamp()
+        }
+    }
+
     func recenter() {
         centerActiveWindow(for: .identity)
     }

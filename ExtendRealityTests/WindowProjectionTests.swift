@@ -1,4 +1,6 @@
 import CoreGraphics
+import ImageIO
+import UIKit
 import XCTest
 @testable import ExtendReality
 
@@ -47,5 +49,55 @@ final class WindowProjectionTests: XCTestCase {
         )
 
         XCTAssertNotEqual(rolled.midY, neutral.midY, accuracy: 0.001)
+    }
+}
+
+final class SpatialPhotoDecoderTests: XCTestCase {
+    func testStereoIndicesAreReadFromSpatialPhotoGroup() throws {
+        let properties: [CFString: Any] = [
+            kCGImagePropertyGroups: [
+                [
+                    kCGImagePropertyGroupType: kCGImagePropertyGroupTypeStereoPair,
+                    kCGImagePropertyGroupImageIndexLeft: 2,
+                    kCGImagePropertyGroupImageIndexRight: 5,
+                ]
+            ]
+        ]
+
+        let indices = try XCTUnwrap(SpatialPhotoDecoder.stereoImageIndices(in: properties))
+
+        XCTAssertEqual(indices, .init(left: 2, right: 5))
+    }
+
+    func testNonStereoGroupIsNotTreatedAsSpatialPhoto() {
+        let properties: [CFString: Any] = [
+            kCGImagePropertyGroups: [
+                [
+                    kCGImagePropertyGroupType: kCGImagePropertyGroupTypeAlternate,
+                    kCGImagePropertyGroupImageIndexLeft: 0,
+                    kCGImagePropertyGroupImageIndexRight: 1,
+                ]
+            ]
+        ]
+
+        XCTAssertNil(SpatialPhotoDecoder.stereoImageIndices(in: properties))
+    }
+}
+
+@MainActor
+final class MediaSessionTests: XCTestCase {
+    func testOrdinaryPhotoUsesTwoDimensionalPresentation() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let data = try XCTUnwrap(image.pngData())
+        let session = MediaSession()
+
+        try session.loadPhotoData(data)
+
+        XCTAssertNotNil(session.image)
+        XCTAssertFalse(session.isSpatialPhoto)
+        XCTAssertEqual(session.presentationMode, .twoDimensional)
     }
 }

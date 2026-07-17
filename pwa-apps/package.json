@@ -1,0 +1,25 @@
+{
+  "name": "extend-reality-pwa-apps",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "spatial-board",
+    "pwa-lab"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace spatial-board && npm run build --workspace pwa-lab && node scripts/assemble.mjs",
+    "catalog": "node scripts/catalog.mjs",
+    "dev:board": "npm run dev --workspace spatial-board",
+    "dev:lab": "npm run dev --workspace pwa-lab",
+    "preview": "vite preview --host 0.0.0.0 --outDir dist",
+    "test": "node --test",
+    "check": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "vite": "8.1.3"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

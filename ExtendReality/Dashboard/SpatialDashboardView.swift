@@ -107,7 +107,8 @@ struct SpatialDashboardView: View {
                         DashboardWidgetCard(
                             item: item,
                             isHovered: inputRouter.dashboardItem() == item.id,
-                            dashboard: dashboard
+                            dashboard: dashboard,
+                            systemData: environment.systemData
                         ) {
                             environment.activateDashboardItem(item.id)
                         }
@@ -218,6 +219,12 @@ private struct DashboardLauncherTile: View {
             Image(systemName: kind.systemImage)
                 .font(.system(size: 43, weight: .medium))
                 .foregroundStyle(accentColor)
+        case .pwa(let installation):
+            Text(installation.manifest.monogram)
+                .font(.system(size: installation.manifest.monogram.count > 1 ? 28 : 42, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(accentColor.opacity(0.78), in: Circle().inset(by: 13))
         case .bookmark(let bookmark):
             Text(bookmark.monogram)
                 .font(.system(size: bookmark.monogram.count > 1 ? 28 : 42, weight: .bold, design: .rounded))
@@ -232,6 +239,7 @@ private struct DashboardLauncherTile: View {
     private var title: String {
         switch item.content {
         case .app(let kind): kind.title
+        case .pwa(let installation): installation.manifest.name
         case .bookmark(let bookmark): bookmark.title
         case .widget(let kind): kind.title
         }
@@ -243,6 +251,7 @@ private struct DashboardLauncherTile: View {
         case .app(.browser): .cyan
         case .app(.youtube): .red
         case .app(.remoteDesktop): .purple
+        case .pwa: .blue
         case .bookmark(let bookmark): bookmark.accent.color
         case .widget: .orange
         }
@@ -253,6 +262,7 @@ private struct DashboardWidgetCard: View {
     let item: DashboardItem
     let isHovered: Bool
     let dashboard: DashboardStore
+    let systemData: SystemDataStore
     let action: () -> Void
 
     var body: some View {
@@ -321,9 +331,9 @@ private struct DashboardWidgetCard: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 widgetTitle("Health", systemImage: "waveform.path.ecg")
-                Text("Activity summary")
+                Text(healthHeadline)
                     .font(.title3.weight(.semibold))
-                Text("Health data source not connected")
+                Text(healthDetail)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.48))
             }
@@ -356,7 +366,7 @@ private struct DashboardWidgetCard: View {
                     Text(formattedFocusTime(at: date))
                         .font(.system(size: 30, weight: .light, design: .rounded))
                         .monospacedDigit()
-                    Text(isFocusRunning(at: date) ? "Tap to pause" : "25 minute session")
+                    Text(focusDetail(at: date))
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.48))
                 }
@@ -384,6 +394,34 @@ private struct DashboardWidgetCard: View {
     private func isFocusRunning(at date: Date) -> Bool {
         guard let focusEndDate = dashboard.focusEndDate else { return false }
         return focusEndDate > date
+    }
+
+    private var healthHeadline: String {
+        guard let summary = systemData.healthSummary else { return "Activity summary" }
+        return "\(summary.steps.formatted()) steps"
+    }
+
+    private var healthDetail: String {
+        guard let summary = systemData.healthSummary else {
+            return systemData.healthAuthorization == .requested || systemData.healthAuthorization == .authorized
+                ? "No activity data available today"
+                : "Connect Health in Settings"
+        }
+        var values = ["\(Int(summary.activeEnergyKilocalories.rounded())) kcal"]
+        if let heartRate = summary.latestHeartRateBPM {
+            values.append("\(Int(heartRate.rounded())) bpm")
+        }
+        return values.joined(separator: " · ")
+    }
+
+    private func focusDetail(at date: Date) -> String {
+        if systemData.isFocused == true {
+            return isFocusRunning(at: date) ? "Focus silences alerts · tap to pause" : "Focus silences notifications"
+        }
+        if systemData.focusAuthorization != .authorized {
+            return "Connect Focus Status in Settings"
+        }
+        return isFocusRunning(at: date) ? "Tap to pause" : "25 minute session"
     }
 }
 
