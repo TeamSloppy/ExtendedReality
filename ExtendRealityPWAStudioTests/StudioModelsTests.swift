@@ -62,4 +62,97 @@ final class StudioModelsTests: XCTestCase {
         XCTAssertNotNil(health["steps"])
         XCTAssertNotNil(focus["isFocused"])
     }
+
+    func testProjectCommandQuotesDirectoryAndPreservesCommand() {
+        let directory = URL(fileURLWithPath: "/tmp/O'Brien PWA")
+        XCTAssertEqual(
+            StudioProjectCommand.fullCommand(directory: directory, command: "npm run dev"),
+            "cd '/tmp/O'\\''Brien PWA' && npm run dev"
+        )
+    }
+
+    func testProjectCommandRejectsWhitespaceOnlyCommand() {
+        XCTAssertEqual(
+            StudioProjectCommand.fullCommand(
+                directory: URL(fileURLWithPath: "/tmp/PWA"),
+                command: "  \n "
+            ),
+            ""
+        )
+    }
+
+    @MainActor
+    func testProjectInspectionReadsPackageScriptsAndIndex() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "pwa-studio-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try Data(#"{"name":"sample-pwa","scripts":{"dev":"vite","build":"vite build"}}"#.utf8)
+            .write(to: directory.appending(path: "package.json"))
+        try Data("<!doctype html>".utf8)
+            .write(to: directory.appending(path: "index.html"))
+
+        let access = StudioProjectAccess(
+            defaults: try XCTUnwrap(UserDefaults(suiteName: "pwa-studio-tests-\(UUID().uuidString)"))
+        )
+        let inspection = try access.inspect(directory)
+
+        XCTAssertEqual(inspection.packageName, "sample-pwa")
+        XCTAssertEqual(inspection.scripts.map(\.name), ["build", "dev"])
+        XCTAssertTrue(inspection.containsIndexHTML)
+    }
+
+    @MainActor
+    func testProjectInspectionReportsMalformedPackageWithStageAndSystemDetails() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "pwa-studio-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data(#"{"scripts": ["dev"]}"#.utf8)
+            .write(to: directory.appending(path: "package.json"))
+
+        let access = StudioProjectAccess(
+            defaults: try XCTUnwrap(UserDefaults(suiteName: "pwa-studio-tests-\(UUID().uuidString)"))
+        )
+
+        XCTAssertThrowsError(try access.inspect(directory)) { error in
+            guard let failure = error as? StudioProjectAccessFailure else {
+                return XCTFail("Expected StudioProjectAccessFailure, got \(error)")
+            }
+            XCTAssertEqual(failure.operation, .decodePackageManifest)
+            XCTAssertTrue(failure.diagnostics.contains("Operation: Parse package.json"))
+            XCTAssertTrue(failure.diagnostics.contains("package.json"))
+            XCTAssertTrue(failure.diagnostics.contains("System error:"))
+
+            let issue = StudioProjectIssue(error: failure)
+            XCTAssertEqual(issue.title, "Couldn’t parse package.json.")
+            XCTAssertFalse(issue.diagnostics.isEmpty)
+        }
+    }
+
+    func testGenericBookmarkErrorGetsActionableContext() {
+        let systemError = NSError(
+            domain: NSCocoaErrorDomain,
+            code: NSFileReadUnknownError,
+            userInfo: [NSLocalizedDescriptionKey: "The file couldn’t be opened."]
+        )
+        let directory = URL(fileURLWithPath: "/Volumes/Cloud/PWA")
+        let failure = StudioProjectAccessFailure(
+            operation: .saveBookmark,
+            url: directory,
+            underlyingError: systemError
+        )
+        let issue = StudioProjectIssue(error: failure)
+
+        XCTAssertEqual(issue.title, "Couldn’t remember access to “PWA”.")
+        XCTAssertEqual(
+            issue.reason,
+            "macOS couldn’t create a persistent, read-only security bookmark for this directory."
+        )
+        XCTAssertTrue(issue.diagnostics.contains("Operation: Save directory access"))
+        XCTAssertTrue(issue.diagnostics.contains("Path: /Volumes/Cloud/PWA"))
+        XCTAssertTrue(issue.diagnostics.contains("System error: NSCocoaErrorDomain"))
+        XCTAssertTrue(issue.diagnostics.contains("The file couldn’t be opened."))
+    }
 }

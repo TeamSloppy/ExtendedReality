@@ -93,6 +93,8 @@ Start one of the Vite development servers in a terminal:
 
 Then run the `ExtendRealityPWAStudio` scheme or use the Codex **Run PWA Studio** action. PWA Lab uses `http://127.0.0.1:5173/pwa-lab/`, Spatial Board uses `http://127.0.0.1:5174/spatial-board/`, Spatial Video uses `http://127.0.0.1:5175/spatial-video/`, and Vite HMR updates the embedded `WKWebView` as source files change.
 
+For another PWA, choose **Open PWA Project Directory…** in the Studio. The app stores a read-only security-scoped bookmark, reads available scripts from `package.json`, and lets you select or edit the launch command. **Open Terminal** copies a safely quoted `cd <directory> && <command>` value and opens Terminal in that directory; paste the command to run it, then enter the preview URL in the toolbar. The sandboxed Studio never executes arbitrary shell commands itself.
+
 ## Deferred integrations
 
 - BLE IMU tracker for actual head pose on XREAL Air v1.

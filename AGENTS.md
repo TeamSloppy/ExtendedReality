@@ -41,7 +41,7 @@ The injected JavaScript API is `window.extendReality` version 3. Preserve these 
 ### Security boundary
 
 - Keep App Sandbox and Hardened Runtime enabled for `ExtendRealityPWAStudio`.
-- Keep the network client, camera, microphone, and corresponding usage descriptions explicit.
+- Keep the network client, camera, microphone, user-selected read-only directory, and app-scoped bookmark entitlements explicit.
 - Do not launch Node, npm, Vite, shell scripts, or arbitrary executables as child processes of the app.
 - Vite runs as a separate developer process through `script/run_pwa_dev_server.sh`.
 - Do not add an unrestricted native or shell bridge to PWA JavaScript.
@@ -61,6 +61,8 @@ Preset endpoints:
 - Spatial Board: `http://127.0.0.1:5174/spatial-board/`
 
 Both use the Vite HMR client, so source changes should update the embedded `WKWebView` without a manual reload. Custom local HTTP and HTTPS URLs can be entered in the Studio toolbar.
+
+The Studio can also open an arbitrary project directory through `NSOpenPanel`. Directory access must remain user-selected and backed by a read-only security-scoped bookmark. `StudioProjectAccess` may inspect `package.json`, suggest npm scripts, build a safely quoted command, copy it, and open Terminal at the selected directory. The user must paste and execute the command in Terminal; the Studio must not run it as a child process.
 
 Build and launch the Studio with:
 

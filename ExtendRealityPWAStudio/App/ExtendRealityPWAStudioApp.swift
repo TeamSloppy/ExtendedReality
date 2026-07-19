@@ -12,6 +12,18 @@ struct ExtendRealityPWAStudioApp: App {
         }
         .defaultSize(width: 1_420, height: 900)
         .commands {
+            CommandGroup(after: .newItem) {
+                Button("Open PWA Project Directory…") {
+                    model.chooseProjectDirectory()
+                }
+                .keyboardShortcut("o", modifiers: [.command])
+
+                Button("Open Project in Terminal") {
+                    model.openProjectInTerminal()
+                }
+                .disabled(model.projectDirectory == nil)
+            }
+
             CommandMenu("PWA") {
                 Button("Launch") { model.launch() }
                     .keyboardShortcut(.return, modifiers: [.command])

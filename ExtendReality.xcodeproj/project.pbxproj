@@ -30,6 +30,7 @@
 		3440D8E226C97D81BC3C690F /* SpatialDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F0E1F6FD54A4F37F222D6 /* SpatialDashboardView.swift */; };
 		35919C3F765F6067FF20DB5B /* InputRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF5800AFD672F84C1E1D1DB /* InputRouterTests.swift */; };
 		367511FF8C0D1A7BB488DDF5 /* WatchControlProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9087E7E2860481F5EBAC380 /* WatchControlProtocol.swift */; };
+		393F747C4F04E2757E3C8CA0 /* StudioProjectAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1DBFAD4B5EA30ACDC51E67 /* StudioProjectAccess.swift */; };
 		3B769C205B2E170ACA65A60B /* SpatialCanvasViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAABCCCCA9B79B77FCF9EF01 /* SpatialCanvasViewController.swift */; };
 		3D2524A8C98609C1DE5725E5 /* WindowProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD4ED33EC147E034206A8BF9 /* WindowProjectionTests.swift */; };
 		49129BD08A6842B2FF1A008B /* FrameStreamingServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481CD2EFFC97A0D7ECA61B79 /* FrameStreamingServer.swift */; };
@@ -211,6 +212,7 @@
 		59CF88677E0D6B7C06EFF06C /* StudioModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioModelsTests.swift; sourceTree = "<group>"; };
 		5BAB7C806C1C2CB2EB220868 /* NativeVoiceIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVoiceIO.swift; sourceTree = "<group>"; };
 		5D13AFE8E75CD64DD37A035B /* UltrawideLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UltrawideLayoutTests.swift; sourceTree = "<group>"; };
+		5F1DBFAD4B5EA30ACDC51E67 /* StudioProjectAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectAccess.swift; sourceTree = "<group>"; };
 		5F563AE31586191244ED1203 /* SloppyVoiceTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SloppyVoiceTransport.swift; sourceTree = "<group>"; };
 		68948E906E2F9C5B34B50ECB /* HardwareMouseInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareMouseInput.swift; sourceTree = "<group>"; };
 		6CCAC530DCA56CDACA236B92 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
@@ -360,6 +362,14 @@
 				D2E524D808047D737FE60FFA /* ExtendRealityPWAStudioApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		41AFA98840A2903766A66BEC /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				5F1DBFAD4B5EA30ACDC51E67 /* StudioProjectAccess.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		52C0FA1EA1315E2DDF8ED21E /* Resources */ = {
@@ -671,6 +681,7 @@
 				2C84A10F9CF81380D96F36A3 /* App */,
 				9035D28F77EE96D18C807F51 /* Models */,
 				5B01E984DEEE0029488E53C4 /* Resources */,
+				41AFA98840A2903766A66BEC /* Services */,
 				B17335B4D6CD479990CC9EFD /* Stores */,
 				CF47854B69C0BE6A0CEC6A4B /* Views */,
 				947A27B927BBBE711E4A5A3D /* Web */,
@@ -1076,6 +1087,7 @@
 				7B5509C51CD823B2E9A62D05 /* RuntimeInspectorView.swift in Sources */,
 				07950416D0A68195CCD7E4BC /* StudioAppModel.swift in Sources */,
 				A78471BBF36834FDB2DF8194 /* StudioModels.swift in Sources */,
+				393F747C4F04E2757E3C8CA0 /* StudioProjectAccess.swift in Sources */,
 				6E3D61461EE64238BB7BA63C /* StudioRootView.swift in Sources */,
 				D7D7591FE69D722E5D98211C /* StudioSidebarView.swift in Sources */,
 				00143C4E733E9C643D7747BB /* StudioWebSession.swift in Sources */,

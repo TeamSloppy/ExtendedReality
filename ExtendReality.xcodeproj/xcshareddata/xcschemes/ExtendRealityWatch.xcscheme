@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1430"
-   version = "1.3">
+   version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES">
+      buildImplicitDependencies = "YES"
+      runPostActionsOnFailure = "NO">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -15,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A1920FC928A9F0E2675D93B3"
-               BuildableName = "ExtendReality Watch.app"
+               BuildableName = "ExtendRealityWatch.app"
                BlueprintName = "ExtendRealityWatch"
                ReferencedContainer = "container:ExtendReality.xcodeproj">
             </BuildableReference>
@@ -29,7 +30,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "71F6761C2FDE6A44D6233402"
-               BuildableName = "ExtendReality Watch Widget.appex"
+               BuildableName = "ExtendRealityWatchWidget.appex"
                BlueprintName = "ExtendRealityWatchWidget"
                ReferencedContainer = "container:ExtendReality.xcodeproj">
             </BuildableReference>
@@ -40,12 +41,13 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      onlyGenerateCoverageForSpecifiedTargets = "NO">
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1920FC928A9F0E2675D93B3"
-            BuildableName = "ExtendReality Watch.app"
+            BuildableName = "ExtendRealityWatch.app"
             BlueprintName = "ExtendRealityWatch"
             ReferencedContainer = "container:ExtendReality.xcodeproj">
          </BuildableReference>
@@ -68,7 +70,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1920FC928A9F0E2675D93B3"
-            BuildableName = "ExtendReality Watch.app"
+            BuildableName = "ExtendRealityWatch.app"
             BlueprintName = "ExtendRealityWatch"
             ReferencedContainer = "container:ExtendReality.xcodeproj">
          </BuildableReference>
@@ -85,7 +87,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1920FC928A9F0E2675D93B3"
-            BuildableName = "ExtendReality Watch.app"
+            BuildableName = "ExtendRealityWatch.app"
             BlueprintName = "ExtendRealityWatch"
             ReferencedContainer = "container:ExtendReality.xcodeproj">
          </BuildableReference>

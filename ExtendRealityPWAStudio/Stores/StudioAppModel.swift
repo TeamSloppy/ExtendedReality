@@ -15,24 +15,52 @@ final class StudioAppModel {
     var logs: [StudioLogEntry] = []
     var isInspectorPresented = true
     var activePanelID: SpatialPanelID = .primary
+    var projectDirectory: URL?
+    var packageScripts: [StudioPackageScript] = []
+    var selectedPackageScriptName: String?
+    var launchCommand = ""
+    var projectIssue: StudioProjectIssue?
 
     @ObservationIgnored private let websiteDataStore = WKWebsiteDataStore.default()
     @ObservationIgnored private var secondarySessions: [SpatialPanelID: StudioWebSession] = [:]
+    @ObservationIgnored private let projectAccess: StudioProjectAccess
 
     @ObservationIgnored
     private(set) lazy var primarySession = makeSession(isPrimary: true)
 
     init() {
+        let projectAccess = StudioProjectAccess()
+        self.projectAccess = projectAccess
         layout = Self.defaultLayout(title: StudioPreset.pwaLab.title)
+        launchCommand = projectAccess.storedCommand
+        do {
+            if let directory = try projectAccess.restoreDirectory() {
+                configureProjectDirectory(directory, usesStoredCommand: true)
+            }
+        } catch {
+            recordProjectIssue(error)
+        }
     }
 
-    var serverCommand: String? { selectedPreset.serverCommand }
+    var serverCommand: String? {
+        if selectedPreset == .custom,
+           let projectDirectory,
+           !launchCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return StudioProjectCommand.fullCommand(
+                directory: projectDirectory,
+                command: launchCommand
+            )
+        }
+        return selectedPreset.serverCommand
+    }
 
     var serverHint: String {
-        if let serverCommand {
-            "Run \(serverCommand) in another terminal, then press Launch. Vite HMR updates the viewport automatically."
+        if serverCommand != nil {
+            selectedPreset == .custom
+                ? "Run the copied command in Terminal, then press Launch. Framework HMR works when the selected server supports it."
+                : "Run the copied command in Terminal, then press Launch. Vite HMR updates the viewport automatically."
         } else {
-            "Enter a local HTTP or HTTPS address and press Launch."
+            "Choose a project directory or enter a local HTTP or HTTPS address."
         }
     }
 
@@ -47,6 +75,60 @@ final class StudioAppModel {
         grantedCapabilities = preset.defaultCapabilities
         resetSpatialLayout()
         appendLog(.info, source: "studio", message: "Selected \(preset.title)")
+    }
+
+    func chooseProjectDirectory() {
+        guard let directory = projectAccess.chooseDirectory() else { return }
+        do {
+            let activatedDirectory = try projectAccess.rememberAndActivate(directory)
+            configureProjectDirectory(activatedDirectory, usesStoredCommand: false)
+        } catch {
+            recordProjectIssue(error)
+        }
+    }
+
+    func setLaunchCommand(_ command: String) {
+        launchCommand = command
+        projectAccess.storedCommand = command
+        selectedPackageScriptName = packageScripts.first(where: {
+            "npm run \($0.name)" == command.trimmingCharacters(in: .whitespacesAndNewlines)
+        })?.name
+    }
+
+    func selectPackageScript(_ scriptName: String?) {
+        selectedPackageScriptName = scriptName
+        guard let scriptName else { return }
+        setLaunchCommand("npm run \(scriptName)")
+    }
+
+    func forgetProjectDirectory() {
+        projectAccess.forgetDirectory()
+        projectDirectory = nil
+        packageScripts = []
+        selectedPackageScriptName = nil
+        launchCommand = ""
+        projectIssue = nil
+        if selectedPreset == .custom {
+            address = StudioPreset.custom.defaultAddress
+        }
+        appendLog(.info, source: "project", message: "Forgot project directory")
+    }
+
+    func openProjectInTerminal() {
+        guard let projectDirectory else { return }
+        copyServerCommand()
+        projectAccess.openInTerminal(projectDirectory) { [weak self] error in
+            guard let self else { return }
+            if let error {
+                recordProjectIssue(error, source: "terminal")
+            } else {
+                appendLog(
+                    .info,
+                    source: "terminal",
+                    message: "Opened \(projectDirectory.lastPathComponent); paste the copied command to run it"
+                )
+            }
+        }
     }
 
     func launch() {
@@ -163,6 +245,13 @@ final class StudioAppModel {
         appendLog(.info, source: "studio", message: "Copied server command")
     }
 
+    func copyProjectDiagnostics() {
+        guard let projectIssue else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(projectIssue.diagnostics, forType: .string)
+        appendLog(.info, source: "project", message: "Copied project diagnostics")
+    }
+
     func clearWebsiteData() async {
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         let records = await websiteDataStore.dataRecords(ofTypes: dataTypes)
@@ -199,6 +288,56 @@ final class StudioAppModel {
                 session.load(url)
             }
         }
+    }
+
+    private func configureProjectDirectory(_ directory: URL, usesStoredCommand: Bool) {
+        projectDirectory = directory
+        selectedPreset = .custom
+        grantedCapabilities = StudioPreset.custom.defaultCapabilities
+        projectIssue = nil
+        do {
+            let inspection = try projectAccess.inspect(directory)
+            packageScripts = inspection.scripts
+            if !usesStoredCommand || launchCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let preferredScript = inspection.scripts.first(where: { $0.name == "dev" })
+                    ?? inspection.scripts.first(where: { $0.name == "start" })
+                    ?? inspection.scripts.first(where: { $0.name.localizedCaseInsensitiveContains("dev") })
+                if let preferredScript {
+                    selectPackageScript(preferredScript.name)
+                } else if inspection.containsIndexHTML {
+                    setLaunchCommand("python3 -m http.server 5173")
+                }
+            } else {
+                selectedPackageScriptName = inspection.scripts.first(where: {
+                    "npm run \($0.name)" == launchCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+                })?.name
+            }
+
+            switch inspection.packageName?.lowercased() {
+            case "pwa-lab":
+                address = StudioPreset.pwaLab.defaultAddress
+            case "spatial-board":
+                address = StudioPreset.spatialBoard.defaultAddress
+            default:
+                break
+            }
+            resetSpatialLayout()
+            appendLog(
+                .info,
+                source: "project",
+                message: "Opened \(directory.path); found \(inspection.scripts.count) package scripts"
+            )
+        } catch {
+            packageScripts = []
+            selectedPackageScriptName = nil
+            recordProjectIssue(error)
+        }
+    }
+
+    private func recordProjectIssue(_ error: Error, source: String = "project") {
+        let issue = StudioProjectIssue(error: error)
+        projectIssue = issue
+        appendLog(.error, source: source, message: "\(issue.title)\n\(issue.diagnostics)")
     }
 
     private func makeSession(isPrimary: Bool) -> StudioWebSession {
