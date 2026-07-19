@@ -1,9 +1,10 @@
 # ExtendReality pilot PWAs
 
-This workspace contains two static apps for validating the ExtendReality PWA host:
+This workspace contains three static apps for validating the ExtendReality PWA host:
 
 - **Spatial Board** — an Excalidraw-based offline whiteboard with IndexedDB persistence and compact widget mode.
-- **PWA Lab** — diagnostics for Service Worker, Cache Storage, IndexedDB, WebKit media permissions, and ExtendReality host API v2.
+- **PWA Lab** — diagnostics for Service Worker, Cache Storage, IndexedDB, WebKit media permissions, and ExtendReality host API v3 including spatial-window composition.
+- **Spatial Video** — a spatial online player plus an OPFS/IndexedDB library for user-owned offline media. YouTube content remains online-only and uses the official embedded player.
 
 ## Build
 
@@ -20,7 +21,8 @@ The deployable static site is assembled in `dist/`:
 dist/
 ├── catalog.json
 ├── pwa-lab/
-└── spatial-board/
+├── spatial-board/
+└── spatial-video/
 ```
 
 Upload the complete directory to the HTTPS origin used during the build. Configure `ExtendRealityPWACatalogURL` as `https://apps.your-domain.example/catalog.json`, regenerate the Xcode project, and open **Web App Store** in the controller.
@@ -36,6 +38,7 @@ npm run catalog -- https://apps.your-domain.example
 ```sh
 npm run dev:board
 npm run dev:lab
+npm run dev:video
 ```
 
 Localhost is suitable for browser development because browsers treat it as a secure development context. The iOS host deliberately accepts only HTTPS manifest URLs, so test the complete installation flow from a trusted HTTPS deployment or tunnel.
@@ -58,4 +61,6 @@ After the first successful deployment, use `https://spectraldragon.github.io/Ext
 3. Install PWA Lab with selected permissions and run safe checks.
 4. Exercise each native capability individually. Denied host permissions must produce a visible failure.
 5. Open the external-origin probe and confirm it leaves the PWA surface.
-6. Uninstall each app and confirm its windows and private WebKit data are removed.
+6. Install Spatial Video with Spatial Windows permission, confirm the four-panel layout, and load a YouTube URL.
+7. Import a permitted MP4/WebM/MOV/M4V file, disconnect the network, relaunch it, and confirm offline playback.
+8. Uninstall each app and confirm its windows and private WebKit data are removed.

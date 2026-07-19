@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/spatial-board/dev-sw.js?dev-sw', { scope: '/spatial-board/', type: 'classic' })

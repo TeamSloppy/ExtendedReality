@@ -27,6 +27,7 @@ enum PWACapability: String, Codable, CaseIterable, Identifiable, Sendable {
     case location
     case health
     case focusStatus
+    case spatialWindows
 
     var id: String { rawValue }
 
@@ -37,6 +38,7 @@ enum PWACapability: String, Codable, CaseIterable, Identifiable, Sendable {
         case .location: "Location"
         case .health: "Health Summary"
         case .focusStatus: "Focus Status"
+        case .spatialWindows: "Spatial Windows"
         }
     }
 
@@ -47,6 +49,7 @@ enum PWACapability: String, Codable, CaseIterable, Identifiable, Sendable {
         case .location: "Read your current approximate location."
         case .health: "Read today's steps, active energy, and latest heart rate."
         case .focusStatus: "See whether Focus currently silences ExtendReality notifications."
+        case .spatialWindows: "Create a fixed group of spatial panels that moves with the app."
         }
     }
 
@@ -57,6 +60,7 @@ enum PWACapability: String, Codable, CaseIterable, Identifiable, Sendable {
         case .location: "location.fill"
         case .health: "heart.text.square.fill"
         case .focusStatus: "moon.fill"
+        case .spatialWindows: "rectangle.3.group.fill"
         }
     }
 }

@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>ExtendRealityPWACatalogURL</key>
-	<string></string>
+	<string>https://xr.sloppy.team/plugins/catalog.json</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -33,23 +33,27 @@
 		<string>_extend-reality._tcp.</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>ExtendReality lets you grant selected web apps access to the camera.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>ExtendReality connects to your Mac for remote desktop sessions on the local network.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>ExtendReality lets you grant selected web apps access to the microphone.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>ExtendReality uses your location while the app is open to provide location-aware spatial apps.</string>
-	<key>NSLocationDefaultAccuracyReduced</key>
-	<true/>
-	<key>NSHealthShareUsageDescription</key>
-	<string>ExtendReality reads your steps, active energy, and heart rate to show a private activity summary.</string>
+	<string>ExtendReality uses the camera for debug-only spatial tracking and lets you grant selected web apps camera access.</string>
 	<key>NSFocusStatusUsageDescription</key>
 	<string>ExtendReality reads whether Focus is active so spatial apps can respect your availability.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>ExtendReality reads your steps, active energy, and heart rate to show a private activity summary.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ExtendReality connects to your Mac and Sloppy Core on the local network for remote desktop and voice-assistant sessions.</string>
+	<key>NSLocationDefaultAccuracyReduced</key>
+	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ExtendReality uses your location while the app is open to provide location-aware spatial apps.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ExtendReality records your voice when you invoke Sloppy Assistant and lets you grant selected web apps microphone access.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>ExtendReality displays photos and videos you select in the glasses workspace.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>ExtendReality saves screenshots and recordings of the glasses display to your photo library.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>ExtendReality converts your voice into text for local Sloppy Assistant input.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

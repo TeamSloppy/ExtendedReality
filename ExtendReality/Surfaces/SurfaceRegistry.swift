@@ -3,24 +3,29 @@ import WebKit
 
 @MainActor
 final class SurfaceRegistry {
-    private let inputRouter: InputRouter
+    let inputRouter: InputRouter
+    private unowned let workspace: WorkspaceStore
     private let keychain: KeychainStore
     private let pwaCapabilityProvider: (String, PWACapability) -> Bool
     private let pwaDataProvider: (PWACapability) throws -> [String: Any]
     private var browsers: [UUID: BrowserSession] = [:]
     private var pwaBrowsers: [UUID: BrowserSession] = [:]
+    private var pwaPanelBrowsers: [SpatialPanelSurfaceID: BrowserSession] = [:]
     private var media: [UUID: MediaSession] = [:]
     private var youtube: [UUID: YouTubeSession] = [:]
+    private var youtubePanelTargets: [SpatialPanelSurfaceID: YouTubePanelInputTarget] = [:]
     private var remoteDesktops: [UUID: RoyalVNCSession] = [:]
     private var macStreams: [UUID: BrowserSession] = [:]
 
     init(
         inputRouter: InputRouter,
+        workspace: WorkspaceStore,
         keychain: KeychainStore,
         pwaCapabilityProvider: @escaping (String, PWACapability) -> Bool,
         pwaDataProvider: @escaping (PWACapability) throws -> [String: Any]
     ) {
         self.inputRouter = inputRouter
+        self.workspace = workspace
         self.keychain = keychain
         self.pwaCapabilityProvider = pwaCapabilityProvider
         self.pwaDataProvider = pwaDataProvider
@@ -62,6 +67,20 @@ final class SurfaceRegistry {
         let policy = try? PWAOriginPolicy(manifest: installation.manifest)
         let dataStore = WKWebsiteDataStore(forIdentifier: installation.dataStoreIdentifier)
         let appID = installation.id
+        let allowedOrigins = try? Set(installation.manifest.allowedOrigins.map(PWAOrigin.init(rawValue:)))
+        let windowClient = allowedOrigins.map { origins in
+            SpatialWindowClient(
+                windowID: id,
+                workspace: workspace,
+                allowedOrigins: origins,
+                permissionProvider: { [pwaCapabilityProvider] in
+                    pwaCapabilityProvider(appID, .spatialWindows)
+                },
+                layoutDidChange: { [weak self] layout in
+                    self?.reconcilePwaPanels(windowID: id, layout: layout)
+                }
+            )
+        }
         let session = BrowserSession(
             initialURL: launchURL.absoluteString,
             websiteDataStore: dataStore,
@@ -71,7 +90,8 @@ final class SurfaceRegistry {
             },
             dataProvider: { [pwaDataProvider] capability in
                 try pwaDataProvider(capability)
-            }
+            },
+            spatialWindowClient: windowClient
         )
         pwaBrowsers[id] = session
         inputRouter.register(session, for: id)
@@ -91,6 +111,42 @@ final class SurfaceRegistry {
         let session = YouTubeSession(initialVideoID: initialVideoID)
         youtube[id] = session
         inputRouter.register(session, for: id)
+        for panelID: SpatialPanelID in ["video", "info", "search", "transport"] {
+            let surfaceID = SpatialPanelSurfaceID(windowID: id, panelID: panelID)
+            let target = YouTubePanelInputTarget(panelID: panelID, session: session)
+            youtubePanelTargets[surfaceID] = target
+            inputRouter.register(target, for: panelID, in: id)
+        }
+        return session
+    }
+
+    func pwaPanel(
+        for windowID: UUID,
+        panelID: SpatialPanelID,
+        installation: PWAInstallation,
+        initialURL: URL
+    ) -> BrowserSession {
+        let surfaceID = SpatialPanelSurfaceID(windowID: windowID, panelID: panelID)
+        if let session = pwaPanelBrowsers[surfaceID] {
+            if session.address != initialURL.absoluteString { session.load(initialURL.absoluteString) }
+            return session
+        }
+        let policy = try? PWAOriginPolicy(manifest: installation.manifest)
+        let dataStore = WKWebsiteDataStore(forIdentifier: installation.dataStoreIdentifier)
+        let appID = installation.id
+        let session = BrowserSession(
+            initialURL: initialURL.absoluteString,
+            websiteDataStore: dataStore,
+            navigationPolicy: policy,
+            capabilityProvider: { [pwaCapabilityProvider] capability in
+                pwaCapabilityProvider(appID, capability)
+            },
+            dataProvider: { [pwaDataProvider] capability in
+                try pwaDataProvider(capability)
+            }
+        )
+        pwaPanelBrowsers[surfaceID] = session
+        inputRouter.register(session, for: panelID, in: windowID)
         return session
     }
 
@@ -119,10 +175,27 @@ final class SurfaceRegistry {
     func remove(windowID: UUID) {
         browsers.removeValue(forKey: windowID)
         pwaBrowsers.removeValue(forKey: windowID)
+        pwaPanelBrowsers = pwaPanelBrowsers.filter { $0.key.windowID != windowID }
         media.removeValue(forKey: windowID)
         youtube.removeValue(forKey: windowID)
+        youtubePanelTargets = youtubePanelTargets.filter { $0.key.windowID != windowID }
         macStreams.removeValue(forKey: windowID)
         remoteDesktops.removeValue(forKey: windowID)?.disconnect()
+    }
+
+    func removePanels(windowID: UUID) {
+        pwaPanelBrowsers = pwaPanelBrowsers.filter { $0.key.windowID != windowID }
+        inputRouter.removePanelLayouts(for: windowID)
+    }
+
+    private func reconcilePwaPanels(windowID: UUID, layout: SpatialAppLayout?) {
+        let retainedIDs = Set(layout?.panels.compactMap { panel -> SpatialPanelID? in
+            if case .web = panel.content { return panel.id }
+            return nil
+        } ?? [])
+        pwaPanelBrowsers = pwaPanelBrowsers.filter { surfaceID, _ in
+            surfaceID.windowID != windowID || retainedIDs.contains(surfaceID.panelID)
+        }
     }
 
     func removeWebsiteData(for identifier: UUID) async throws {

@@ -90,6 +90,38 @@ final class PWAStoreTests: XCTestCase {
         }
     }
 
+    func testSpatialLayoutRejectsForeignOriginsAndDuplicateIDs() throws {
+        let allowedOrigins = try Set([PWAOrigin(rawValue: "https://notes.example.com")])
+        let primary = SpatialPanelDescriptor(
+            id: .primary,
+            accessibilityLabel: "Notes",
+            placement: SpatialPanelPlacement(width: 0.72, height: 0.68),
+            content: .primary
+        )
+        let validPanel = SpatialPanelDescriptor(
+            id: "tools",
+            accessibilityLabel: "Tools",
+            placement: SpatialPanelPlacement(yaw: 18, width: 0.3, height: 0.4),
+            content: .web(URL(string: "https://notes.example.com/tools")!)
+        )
+
+        XCTAssertNoThrow(
+            try SpatialAppLayout(panels: [primary, validPanel]).validated(allowedOrigins: allowedOrigins)
+        )
+
+        var foreign = validPanel
+        foreign.content = .web(URL(string: "https://tracker.example.net/tools")!)
+        XCTAssertThrowsError(
+            try SpatialAppLayout(panels: [primary, foreign]).validated(allowedOrigins: allowedOrigins)
+        ) { error in
+            XCTAssertEqual(error as? SpatialWindowError, .disallowedURL)
+        }
+
+        XCTAssertThrowsError(
+            try SpatialAppLayout(panels: [primary, primary]).validated(allowedOrigins: allowedOrigins)
+        )
+    }
+
     private func makeManifest(
         launchURL: URL = URL(string: "https://notes.example.com/app")!,
         allowedOrigins: [String] = ["https://notes.example.com"],
@@ -105,7 +137,7 @@ final class PWAStoreTests: XCTestCase {
             universalLink: URL(string: "https://notes.example.com/apps/notes")!,
             allowedOrigins: allowedOrigins,
             displayModes: [.window, .widget],
-            requestedCapabilities: [.camera, .microphone, .location, .health, .focusStatus],
+            requestedCapabilities: [.camera, .microphone, .location, .health, .focusStatus, .spatialWindows],
             minimumAge: minimumAge,
             accentHex: "#2563EB"
         )

@@ -9,3 +9,8 @@ script = ""
 name = "Run"
 icon = "run"
 command = "./script/build_and_run.sh"
+
+[[actions]]
+name = "Run PWA Studio"
+icon = "run"
+command = "./script/build_and_run_pwa_studio.sh"

@@ -24,6 +24,8 @@ final class SpatialCanvasViewController: UIViewController {
             .environment(environment.dashboard)
             .environment(environment.inputRouter)
             .environment(environment.headPose)
+            .environment(environment.voiceAssistant)
+            .environment(environment.voiceAssistantSettings)
         let host = UIHostingController(rootView: root)
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false

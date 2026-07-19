@@ -30,6 +30,11 @@ npm start
 - статус Apple Watch;
 - все workspace windows, их transform, размер, z-index, focus и minimized.
 
+Viewer показывает телефон как 6DoF: Core Motion даёт yaw/pitch/roll, а debug-only
+ARKit session — относительное XYZ от положения в момент запуска приложения.
+Разрешите доступ к камере на iPhone; при запрете камеры viewer продолжит работать
+в 3DoF и явно пометит XYZ как фиксированный anchor.
+
 Телефон и Mac должны находиться в одной локальной сети. Точка доступа телефона
 тоже подходит, если устройства видят друг друга.
 

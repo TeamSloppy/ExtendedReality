@@ -34,11 +34,11 @@ The companion watch app targets watchOS 11. Run the `ExtendReality` scheme on a 
 
 ## PWA Store
 
-Set `ExtendRealityPWACatalogURL` in `project.yml` to an HTTPS endpoint serving the catalog document. Until it is configured, the native store intentionally shows an unconfigured state and does not offer third-party apps.
+`ExtendRealityPWACatalogURL` is configured in `project.yml` to use `https://xr.sloppy.team/plugins/catalog.json`. The human-facing storefront remains available at `https://xr.sloppy.team/plugins/`, while the native store downloads the versioned JSON catalog endpoint.
 
-The catalog schema and pilot entries are documented in [`docs/pwa-catalog-v1.example.json`](docs/pwa-catalog-v1.example.json). The host contract, admission rules, and App Store constraints are in [`docs/pwa-host.md`](docs/pwa-host.md). Host API v2 uses `WKWebView`, exposes only reviewed read-only capabilities, and does not embed Node.js or an unrestricted native bridge.
+The catalog schema and pilot entries are documented in [`docs/pwa-catalog-v1.example.json`](docs/pwa-catalog-v1.example.json). The host contract, admission rules, and App Store constraints are in [`docs/pwa-host.md`](docs/pwa-host.md). Host API v3 uses `WKWebView`, exposes reviewed data capabilities plus the constrained spatial-window composition API, and does not embed Node.js or an unrestricted native bridge.
 
-Two deployable pilot apps live in [`pwa-apps`](pwa-apps): an offline Excalidraw-based **Spatial Board** and the **PWA Lab** host diagnostic suite. Their workspace generates the production static site and catalog for a chosen HTTPS origin.
+Three deployable apps live in [`pwa-apps`](pwa-apps): the offline Excalidraw-based **Spatial Board**, the **PWA Lab** host diagnostic suite, and **Spatial Video** for online embedded playback plus user-owned offline media. Their workspace generates the production static site and catalog for a chosen HTTPS origin.
 
 ## Hardware test
 
@@ -78,6 +78,20 @@ Run the `ExtendRealityMac` scheme on macOS 15 or newer, or use the Codex **Run**
 Press **Start**, grant Screen Recording permission when macOS asks, then open the LAN URL shown in the app. The root page shows the primary stream, `/stream.mjpeg` is the primary MJPEG endpoint, and `/display/<display-id>.mjpeg` addresses individual displays. The service is advertised as `_extend-reality._tcp` through Bonjour.
 
 The MVP stream is intentionally unencrypted HTTP/MJPEG and should only be used on a trusted local network. Creating additional system-level virtual monitors is not available through a supported public macOS app API; the current multi-display mode uses physical displays. A separate signed display-driver strategy needs its own distribution and security design.
+
+## PWA Studio for macOS
+
+`ExtendRealityPWAStudio` is a sandboxed macOS developer tool that renders local PWAs inside a 16:9 glasses-style spatial viewport. It shares the PWA manifest, capability, and spatial-layout models with the iOS host, injects ExtendReality host API v3, supports multi-panel layouts, and exposes fixture permissions and browser console output in a native inspector.
+
+Start one of the Vite development servers in a terminal:
+
+```sh
+./script/run_pwa_dev_server.sh lab
+./script/run_pwa_dev_server.sh board
+./script/run_pwa_dev_server.sh video
+```
+
+Then run the `ExtendRealityPWAStudio` scheme or use the Codex **Run PWA Studio** action. PWA Lab uses `http://127.0.0.1:5173/pwa-lab/`, Spatial Board uses `http://127.0.0.1:5174/spatial-board/`, Spatial Video uses `http://127.0.0.1:5175/spatial-video/`, and Vite HMR updates the embedded `WKWebView` as source files change.
 
 ## Deferred integrations
 

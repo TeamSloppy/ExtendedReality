@@ -54,9 +54,12 @@ final class MacStreamingStore {
         server.onFailure = { [weak self] message in
             self?.state = .failed(message)
         }
-        server.onStartRequested = { [weak self] layout in
+        server.onStartRequested = { [weak self] layout, usesVirtualCursor in
             guard let self else { return }
-            try await self.startRemotely(layout: layout)
+            try await self.startRemotely(
+                layout: layout,
+                usesVirtualCursor: usesVirtualCursor
+            )
         }
         do {
             try server.start()
@@ -109,13 +112,16 @@ final class MacStreamingStore {
         state = displays.isEmpty ? .idle : .ready
     }
 
-    private func startRemotely(layout requestedLayout: StreamLayout) async throws {
+    private func startRemotely(
+        layout requestedLayout: StreamLayout,
+        usesVirtualCursor: Bool
+    ) async throws {
         layout = requestedLayout
         if displays.isEmpty {
             state = .loading
             try await loadDisplays()
         }
-        try await startCapture()
+        try await startCapture(usesVirtualCursor: usesVirtualCursor)
     }
 
     private func loadDisplays() async throws {
@@ -128,7 +134,7 @@ final class MacStreamingStore {
         }
     }
 
-    private func startCapture() async throws {
+    private func startCapture(usesVirtualCursor: Bool = false) async throws {
         if state == .capturing {
             await capture.stop()
         }
@@ -141,8 +147,16 @@ final class MacStreamingStore {
 
         frames = [:]
         compositeFrame = nil
-        server.updateMetadata(layout: layout, displays: selectedDisplays)
-        try await capture.start(layout: layout, displays: selected)
+        server.updateMetadata(
+            layout: layout,
+            displays: selectedDisplays,
+            usesVirtualCursor: usesVirtualCursor
+        )
+        try await capture.start(
+            layout: layout,
+            displays: selected,
+            showsCursor: !usesVirtualCursor
+        )
         state = .capturing
     }
 

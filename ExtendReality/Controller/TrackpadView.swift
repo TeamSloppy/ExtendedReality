@@ -137,13 +137,16 @@ struct TrackpadView: View {
     }
 
     private var instructionText: String {
+        if workspace.controlMode == .arrange {
+            return "drag to move window · pinch to change distance · double tap to finish"
+        }
         switch mode {
         case .trackpad:
-            "drag to move · tap to click · pinch to zoom · two fingers to scroll"
+            return "drag to move · tap to click · pinch to zoom · two fingers to scroll"
         case .laser where laserController.isActive:
-            "move the iPhone to aim · tap to click · pinch to zoom"
+            return "move the iPhone to aim · tap to click · pinch to zoom"
         case .laser:
-            "drag to point · tap to click · pinch to zoom"
+            return "drag to point · tap to click · pinch to zoom"
         }
     }
 
@@ -279,7 +282,7 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
         var parent: TrackpadGestureSurface
         private var previousTranslation = CGPoint.zero
         private var previousScale: CGFloat = 1
-        private var isDraggingWindowHandle = false
+        private var resizingWindowID: UUID?
 
         init(parent: TrackpadGestureSurface) {
             self.parent = parent
@@ -319,8 +322,14 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             showWorkspaceSwipe.delegate = self
             view.addGestureRecognizer(showWorkspaceSwipe)
 
+            let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+            doubleTap.numberOfTapsRequired = 2
+            doubleTap.delegate = self
+            view.addGestureRecognizer(doubleTap)
+
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             tap.delegate = self
+            tap.require(toFail: doubleTap)
             view.addGestureRecognizer(tap)
 
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
@@ -346,14 +355,16 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             switch recognizer.state {
             case .began:
                 previousTranslation = .zero
-                isDraggingWindowHandle = parent.zone == .main
-                    && parent.workspace.controlMode == .pointer
-                    && parent.inputRouter.chromeRegion(in: parent.workspace.activeWindowID) == .moveHandle
                 ControllerHaptics.gestureStart()
                 if parent.zone == .main,
                    parent.mode == .laser,
                    !parent.laserController.isActive {
                     movePointer(to: recognizer.location(in: view), in: view.bounds.size)
+                }
+                resizingWindowID = resizeTargetAtCursor()
+                if let resizingWindowID {
+                    parent.workspace.focus(resizingWindowID)
+                    ControllerHaptics.selection()
                 }
             case .changed:
                 let translation = recognizer.translation(in: view)
@@ -365,7 +376,18 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
 
                 if parent.zone == .scroll {
                     scroll(by: delta, in: view.bounds.size)
-                } else if isDraggingWindowHandle || parent.workspace.controlMode == .arrange {
+                } else if let resizingWindowID {
+                    let normalized = normalized(delta, in: view.bounds.size)
+                    parent.workspace.resizeWindow(
+                        resizingWindowID,
+                        normalizedDelta: normalized.dx
+                    )
+                    parent.inputRouter.movePointer(
+                        delta: CGVector(dx: normalized.dx * 0.7, dy: 0),
+                        in: resizingWindowID,
+                        dispatchesToSurface: false
+                    )
+                } else if parent.workspace.controlMode == .arrange {
                     parent.workspace.moveActiveWindow(
                         normalizedDelta: normalized(delta, in: view.bounds.size)
                     )
@@ -380,7 +402,7 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
                 }
             case .ended, .cancelled, .failed:
                 previousTranslation = .zero
-                isDraggingWindowHandle = false
+                resizingWindowID = nil
             default:
                 break
             }
@@ -419,6 +441,20 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             ControllerHaptics.click()
         }
 
+        @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+            if parent.workspace.controlMode == .arrange {
+                parent.workspace.controlMode = .pointer
+                ControllerHaptics.navigation()
+                return
+            }
+
+            guard let windowID = parent.workspace.activeWindowID,
+                  parent.inputRouter.chromeRegion(in: windowID) == .moveHandle else { return }
+            parent.workspace.focus(windowID)
+            parent.workspace.controlMode = .arrange
+            ControllerHaptics.navigation()
+        }
+
         @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
             switch recognizer.state {
             case .began:
@@ -443,6 +479,14 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
                 ),
                 in: parent.workspace.activeWindowID
             )
+        }
+
+        private func resizeTargetAtCursor() -> UUID? {
+            guard parent.zone == .main,
+                  parent.workspace.controlMode == .pointer,
+                  let windowID = parent.inputRouter.window(),
+                  parent.inputRouter.chromeRegion(in: windowID) == .resizeHandle else { return nil }
+            return windowID
         }
 
         private func scroll(by delta: CGPoint, in size: CGSize) {

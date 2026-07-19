@@ -1,4 +1,4 @@
-import { gazeDirection, projectedTransformSize } from "./spatial-math.js";
+import { gazeDirection, projectedTransformSize, rotatePointByPose } from "./spatial-math.js";
 
 const app = document.getElementById("app");
 const mode = new URLSearchParams(location.search).get("mode");
@@ -104,10 +104,10 @@ function normalizeSnapshot(message) {
       watch: { ...watch, orientation: orientation(watch.orientation || watch) },
     },
     devices: {
-      head: { position: vector(devices.head?.position, { x: 0, y: 0.35, z: 0 }) },
-      phone: { position: vector(devices.phone?.position || phone.position, { x: 0.86, y: -0.42, z: 0.24 }) },
-      watch: { position: vector(devices.watch?.position || watch.position, { x: -0.72, y: -0.4, z: 0.15 }) },
-      headphones: { position: vector(devices.headphones?.position, { x: 0, y: 0.35, z: 0 }) },
+      head: { ...devices.head, position: vector(devices.head?.position, { x: 0, y: 0.35, z: 0 }) },
+      phone: { ...devices.phone, position: vector(devices.phone?.position || phone.position, { x: 0.86, y: -0.42, z: 0.24 }) },
+      watch: { ...devices.watch, position: vector(devices.watch?.position || watch.position, { x: -0.72, y: -0.4, z: 0.15 }) },
+      headphones: { ...devices.headphones, position: vector(devices.headphones?.position, { x: 0, y: 0.35, z: 0 }) },
     },
     windows,
     raw: message,
@@ -369,11 +369,32 @@ function setupViewer() {
     const point = project(position);
     context.save(); context.translate(point.x, point.y);
     context.strokeStyle = color; context.fillStyle = "rgba(7,17,31,.9)"; context.lineWidth = 2;
-    if (type === "phone") { context.beginPath(); context.roundRect(-9, -17, 18, 34, 4); context.fill(); context.stroke(); context.beginPath(); context.moveTo(-3, -12); context.lineTo(3, -12); context.stroke(); }
     if (type === "watch") { context.strokeRect(-7, -8, 14, 16); context.beginPath(); context.moveTo(0, -17); context.lineTo(0, -8); context.moveTo(0, 8); context.lineTo(0, 17); context.stroke(); }
     if (type === "head") { context.beginPath(); context.arc(0, 0, 13, 0, Math.PI * 2); context.fill(); context.stroke(); context.beginPath(); context.arc(-15, 2, 3, 0, Math.PI * 2); context.arc(15, 2, 3, 0, Math.PI * 2); context.fillStyle = colors.cyan; context.fill(); }
     context.restore();
     context.fillStyle = colors.muted; context.font = "10px ui-monospace, monospace"; context.fillText(label, point.x + 16, point.y - 12);
+  }
+
+  function drawOrientedPhone(position, pose, device) {
+    const add = (left, right) => ({ x: left.x + right.x, y: left.y + right.y, z: left.z + right.z });
+    const localCorners = [
+      { x: -0.13, y: 0.24, z: 0 }, { x: 0.13, y: 0.24, z: 0 },
+      { x: 0.13, y: -0.24, z: 0 }, { x: -0.13, y: -0.24, z: 0 },
+    ];
+    const corners = localCorners.map((corner) => add(position, rotatePointByPose(corner, pose)));
+    polygon(corners, "rgba(7,17,31,.92)", colors.blue, 2.5);
+
+    // The blue ray is the phone screen's forward normal. It makes yaw/pitch
+    // changes visible even when the projected phone body is nearly edge-on.
+    const forward = rotatePointByPose({ x: 0, y: 0, z: -0.42 }, pose);
+    line3D(position, add(position, forward), colors.blue, 2);
+    const center = project(position);
+    context.beginPath(); context.arc(center.x, center.y, 3.5, 0, Math.PI * 2); context.fillStyle = colors.blue; context.fill();
+    context.fillStyle = colors.muted; context.font = "10px ui-monospace, monospace";
+    const isPositionTracked = device?.tracking === "normal";
+    context.fillText(`PHONE · ${isPositionTracked ? "6DOF" : "3DOF"}`, center.x + 16, center.y - 12);
+    context.fillStyle = colors.faint; context.font = "9px ui-monospace, monospace";
+    context.fillText(isPositionTracked ? "ARKit position" : `XYZ fixed · ${device?.tracking || "no ARKit"}`, center.x + 16, center.y + 2);
   }
 
   function gazeIntersection(origin, direction) {
@@ -420,7 +441,7 @@ function setupViewer() {
     [...snapshot.windows].sort((a, b) => a.position.z - b.position.z).forEach(drawWindow);
     drawGaze();
     drawDevice(snapshot.devices.head.position, "head", "HEAD + AIRPODS", colors.cyan);
-    drawDevice(snapshot.devices.phone.position, "phone", "PHONE", colors.blue);
+    drawOrientedPhone(snapshot.devices.phone.position, snapshot.sensors.phone.orientation, snapshot.devices.phone);
     drawDevice(snapshot.devices.watch.position, "watch", "WATCH", colors.orange);
     drawAxes();
     requestAnimationFrame(draw);

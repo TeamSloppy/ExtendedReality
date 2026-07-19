@@ -38,7 +38,8 @@ final class ScreenCaptureCoordinator {
 
     func start(
         layout: StreamLayout,
-        displays: [SCDisplay]
+        displays: [SCDisplay],
+        showsCursor: Bool = true
     ) async throws {
         await stop()
         guard !displays.isEmpty else { throw CaptureError.noDisplaysSelected }
@@ -58,7 +59,7 @@ final class ScreenCaptureCoordinator {
                     }
                 }
                 pipelines[display.displayID] = pipeline
-                try await pipeline.start()
+                try await pipeline.start(showsCursor: showsCursor)
             }
         } catch {
             await stop()
@@ -170,21 +171,21 @@ private final class DisplayCapturePipeline: NSObject, SCStreamOutput, SCStreamDe
         self.onFailure = onFailure
     }
 
-    func start() async throws {
+    func start(showsCursor: Bool) async throws {
         let filter = SCContentFilter(
             display: display,
             excludingApplications: [],
             exceptingWindows: []
         )
         let configuration = SCStreamConfiguration()
-        let outputSize = Self.outputSize(width: display.width, height: display.height)
-        configuration.width = outputSize.width
-        configuration.height = outputSize.height
+        let outputSize = StreamGeometry.captureSize(width: display.width, height: display.height)
+        configuration.width = Int(outputSize.width)
+        configuration.height = Int(outputSize.height)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         configuration.queueDepth = 3
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.colorSpaceName = CGColorSpace.sRGB
-        configuration.showsCursor = true
+        configuration.showsCursor = showsCursor
         configuration.capturesAudio = false
 
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
@@ -217,13 +218,4 @@ private final class DisplayCapturePipeline: NSObject, SCStreamOutput, SCStreamDe
         onFailure(error.localizedDescription)
     }
 
-    private static func outputSize(width: Int, height: Int) -> (width: Int, height: Int) {
-        let maximumDimension = 2_560.0
-        let largestDimension = Double(max(width, height))
-        let scale = min(maximumDimension / largestDimension, 1)
-        return (
-            width: max(2, Int(Double(width) * scale) / 2 * 2),
-            height: max(2, Int(Double(height) * scale) / 2 * 2)
-        )
-    }
 }

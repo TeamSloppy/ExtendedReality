@@ -5,13 +5,15 @@
   "type": "module",
   "workspaces": [
     "spatial-board",
-    "pwa-lab"
+    "pwa-lab",
+    "spatial-video"
   ],
   "scripts": {
-    "build": "npm run build --workspace spatial-board && npm run build --workspace pwa-lab && node scripts/assemble.mjs",
+    "build": "npm run build --workspace spatial-board && npm run build --workspace pwa-lab && npm run build --workspace spatial-video && node scripts/assemble.mjs",
     "catalog": "node scripts/catalog.mjs",
     "dev:board": "npm run dev --workspace spatial-board",
     "dev:lab": "npm run dev --workspace pwa-lab",
+    "dev:video": "npm run dev --workspace spatial-video",
     "preview": "vite preview --host 0.0.0.0 --outDir dist",
     "test": "node --test",
     "check": "npm test && npm run build"

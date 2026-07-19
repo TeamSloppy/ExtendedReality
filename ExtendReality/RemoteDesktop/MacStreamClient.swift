@@ -56,12 +56,17 @@ private enum MacStreamClientError: LocalizedError {
 @Observable
 final class MacStreamClient: NSObject {
     private(set) var state: MacStreamConnectionState = .idle
+    private(set) var isCursorSyncEnabled = false
+    private(set) var isCursorSyncAvailable = false
 
     @ObservationIgnored private let browser = NetServiceBrowser()
     @ObservationIgnored private var services: [String: NetService] = [:]
     @ObservationIgnored private var discoveredMacs: [String: DiscoveredMac] = [:]
     @ObservationIgnored private var isBrowsing = false
     @ObservationIgnored private let session: URLSession
+    @ObservationIgnored private var activeStream: MacStreamSession?
+    @ObservationIgnored private var cursorSyncTask: Task<Void, Never>?
+    @ObservationIgnored var cursorPositionHandler: ((MacCursorPosition) -> Void)?
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -71,14 +76,36 @@ final class MacStreamClient: NSObject {
 
     var isBusy: Bool { state.isBusy }
     var statusText: String? { state.statusText }
+    var isConnected: Bool {
+        if case .connected = state { return true }
+        return false
+    }
+
+    func setCursorSyncEnabled(_ isEnabled: Bool) {
+        guard isEnabled != isCursorSyncEnabled else { return }
+        isCursorSyncEnabled = isEnabled
+        if isEnabled {
+            startCursorSyncIfPossible()
+        } else {
+            cursorSyncTask?.cancel()
+            cursorSyncTask = nil
+        }
+    }
 
     func startStream(layout: RemoteDisplayLayout) async throws -> MacStreamSession {
         do {
+            cursorSyncTask?.cancel()
+            cursorSyncTask = nil
+            activeStream = nil
+            isCursorSyncAvailable = false
             startDiscoveryIfNeeded()
             state = .searching
             let mac = try await waitForMac()
             state = .connecting(mac.name)
             let stream = try await requestStream(from: mac, layout: layout)
+            activeStream = stream
+            isCursorSyncAvailable = stream.cursorURL != nil
+            startCursorSyncIfPossible()
             state = .connected(mac.name)
             return stream
         } catch {
@@ -127,7 +154,13 @@ final class MacStreamClient: NSObject {
               ) else {
             throw MacStreamClientError.invalidAddress
         }
-        startComponents.queryItems = [URLQueryItem(name: "layout", value: layout.rawValue)]
+        startComponents.queryItems = [
+            URLQueryItem(name: "layout", value: layout.rawValue),
+            URLQueryItem(
+                name: "cursor",
+                value: isCursorSyncEnabled ? "virtual" : "embedded"
+            ),
+        ]
         guard let startURL = startComponents.url else {
             throw MacStreamClientError.invalidAddress
         }
@@ -149,6 +182,41 @@ final class MacStreamClient: NSObject {
             throw MacStreamClientError.invalidResponse
         }
         return stream
+    }
+
+    private func startCursorSyncIfPossible() {
+        cursorSyncTask?.cancel()
+        cursorSyncTask = nil
+        guard isCursorSyncEnabled, let cursorURL = activeStream?.cursorURL else { return }
+
+        let session = self.session
+        cursorSyncTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    var request = URLRequest(
+                        url: cursorURL,
+                        cachePolicy: .reloadIgnoringLocalCacheData,
+                        timeoutInterval: 2
+                    )
+                    request.setValue("application/json", forHTTPHeaderField: "Accept")
+                    let (data, response) = try await session.data(for: request)
+                    guard let response = response as? HTTPURLResponse,
+                          200 ..< 300 ~= response.statusCode else {
+                        throw MacStreamClientError.invalidResponse
+                    }
+                    let position = try JSONDecoder().decode(MacCursorPosition.self, from: data)
+                    guard position.version == 1 else {
+                        throw MacStreamClientError.invalidResponse
+                    }
+                    self?.cursorPositionHandler?(position)
+                    try await Task.sleep(for: .milliseconds(50))
+                } catch is CancellationError {
+                    return
+                } catch {
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+            }
+        }
     }
 
     private func serviceKey(_ service: NetService) -> String {

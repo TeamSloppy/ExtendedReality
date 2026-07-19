@@ -250,7 +250,7 @@ final class SystemDataStore: NSObject, @preconcurrency CLLocationManagerDelegate
                 "isFocused": isFocused,
                 "updatedAt": Self.iso8601.string(from: focusUpdatedAt ?? .now),
             ]
-        case .camera, .microphone:
+        case .camera, .microphone, .spatialWindows:
             throw SystemDataError.dataUnavailable(capability)
         }
     }

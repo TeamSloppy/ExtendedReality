@@ -10,6 +10,7 @@ enum WatchControlCommand: Equatable, Sendable {
     case minimizeWindow(id: UUID)
     case closeWindow(id: UUID)
     case back
+    case toggleVoiceAssistant
     case requestState
 
     private enum Key {
@@ -48,6 +49,8 @@ enum WatchControlCommand: Equatable, Sendable {
             self = .openWindow(kind: kind)
         case "back":
             self = .back
+        case "toggleVoiceAssistant":
+            self = .toggleVoiceAssistant
         case "requestState":
             self = .requestState
         default:
@@ -75,6 +78,8 @@ enum WatchControlCommand: Equatable, Sendable {
             [Key.command: "closeWindow", Key.id: id.uuidString]
         case .back:
             [Key.command: "back"]
+        case .toggleVoiceAssistant:
+            [Key.command: "toggleVoiceAssistant"]
         case .requestState:
             [Key.command: "requestState"]
         }
@@ -118,17 +123,20 @@ struct WatchWorkspaceSnapshot: Equatable, Sendable {
     let windows: [WatchWindowSummary]
     let trackingStatus: String
     let isTracking: Bool
+    let voiceAssistantPhase: String
 
     init(
         activeWindowID: UUID?,
         windows: [WatchWindowSummary],
         trackingStatus: String,
-        isTracking: Bool
+        isTracking: Bool,
+        voiceAssistantPhase: String = "idle"
     ) {
         self.activeWindowID = activeWindowID
         self.windows = windows
         self.trackingStatus = trackingStatus
         self.isTracking = isTracking
+        self.voiceAssistantPhase = voiceAssistantPhase
     }
 
     init?(dictionary: [String: Any]) {
@@ -142,7 +150,8 @@ struct WatchWorkspaceSnapshot: Equatable, Sendable {
             activeWindowID: rawActiveID.flatMap(UUID.init(uuidString:)),
             windows: windows,
             trackingStatus: trackingStatus,
-            isTracking: isTracking
+            isTracking: isTracking,
+            voiceAssistantPhase: dictionary["voiceAssistantPhase"] as? String ?? "idle"
         )
     }
 
@@ -151,7 +160,8 @@ struct WatchWorkspaceSnapshot: Equatable, Sendable {
             "activeWindowID": activeWindowID?.uuidString ?? "",
             "windows": windows.map(\.dictionary),
             "trackingStatus": trackingStatus,
-            "isTracking": isTracking
+            "isTracking": isTracking,
+            "voiceAssistantPhase": voiceAssistantPhase
         ]
     }
 }

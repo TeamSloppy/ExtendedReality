@@ -4,6 +4,17 @@ import XCTest
 
 @MainActor
 final class InputRouterTests: XCTestCase {
+    func testHardwareMouseMappingUsesScreenCoordinates() {
+        XCTAssertEqual(
+            HardwareMouseMapping.pointerDelta(x: 72, y: 36),
+            CGVector(dx: 0.1, dy: -0.05)
+        )
+        XCTAssertEqual(
+            HardwareMouseMapping.scrollDelta(x: -1, y: -2),
+            CGVector(dx: 0.04, dy: 0.08)
+        )
+    }
+
     func testPointerIsClampedAndDispatched() {
         let router = InputRouter()
         let target = InputTargetSpy()
@@ -28,6 +39,29 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(target.commands, [.pointerMoved(normalizedPosition: CGPoint(x: 0, y: 1))])
     }
 
+    func testSurfacePositionMovesVirtualCursorIntoSpatialWindow() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let id = UUID()
+        let layout = WindowChromeLayout(
+            frame: CGRect(x: 200, y: 100, width: 400, height: 500),
+            in: CGSize(width: 1_000, height: 1_000)
+        )
+        router.register(target, for: id)
+        router.updateWindowLayout(layout, for: id)
+
+        router.movePointer(toSurfacePosition: CGPoint(x: 0.25, y: 0.75), in: id)
+
+        XCTAssertEqual(
+            router.cursor,
+            layout.canvasPosition(forSurfacePosition: CGPoint(x: 0.25, y: 0.75))
+        )
+        XCTAssertEqual(
+            target.commands,
+            [.pointerMoved(normalizedPosition: CGPoint(x: 0.25, y: 0.75))]
+        )
+    }
+
     func testTextAndBackAreSentToFocusedTarget() {
         let router = InputRouter()
         let target = InputTargetSpy()
@@ -45,8 +79,9 @@ final class InputRouterTests: XCTestCase {
         let target = InputTargetSpy()
         let id = UUID()
         let size = CGSize(width: 1_000, height: 500)
-        let surfaceMidY = WindowChromeLayout.titleBarHeight
-            + (size.height - WindowChromeLayout.titleBarHeight - WindowChromeLayout.ornamentHeight) / 2
+        let surfaceMidY = WindowChromeLayout.controlBarHeight
+            + WindowChromeLayout.controlBarGap
+            + (size.height - WindowChromeLayout.verticalChromeHeight) / 2
         router.register(target, for: id)
         router.updateWindowLayout(WindowChromeLayout(size: size), for: id)
 
@@ -78,6 +113,63 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(router.chromeRegion(in: id), .outside)
     }
 
+    func testClickFocusesWindowUnderCursorAndDispatchesToIt() throws {
+        let router = InputRouter()
+        let activeTarget = InputTargetSpy()
+        let clickedTarget = InputTargetSpy()
+        let activeID = UUID()
+        let clickedID = UUID()
+        var focusedWindowID: UUID?
+        let clickedLayout = WindowChromeLayout(
+            frame: CGRect(x: 100, y: 100, width: 300, height: 500),
+            in: CGSize(width: 1_000, height: 1_000)
+        )
+        let cursor = CGPoint(x: 0.25, y: 0.35)
+        router.register(activeTarget, for: activeID)
+        router.register(clickedTarget, for: clickedID)
+        router.updateWindowLayout(
+            WindowChromeLayout(
+                frame: CGRect(x: 600, y: 100, width: 300, height: 500),
+                in: CGSize(width: 1_000, height: 1_000)
+            ),
+            for: activeID,
+            zIndex: 2
+        )
+        router.updateWindowLayout(
+            clickedLayout,
+            for: clickedID,
+            zIndex: 1
+        )
+        router.windowFocusHandler = { focusedWindowID = $0 }
+
+        router.movePointer(to: cursor, in: activeID)
+        activeTarget.commands.removeAll()
+        router.pointerDown(in: activeID)
+        router.pointerUp(in: clickedID)
+
+        let expectedPosition = try XCTUnwrap(clickedLayout.surfacePosition(for: cursor))
+        XCTAssertEqual(focusedWindowID, clickedID)
+        XCTAssertTrue(activeTarget.commands.isEmpty)
+        XCTAssertEqual(
+            clickedTarget.commands,
+            [
+                .pointerDown(normalizedPosition: expectedPosition),
+                .pointerUp(normalizedPosition: expectedPosition),
+            ]
+        )
+    }
+
+    func testClickUsesTopmostWindowWhenWindowsOverlap() {
+        let router = InputRouter()
+        let backID = UUID()
+        let frontID = UUID()
+        let layout = WindowChromeLayout(size: CGSize(width: 1_000, height: 500))
+        router.updateWindowLayout(layout, for: backID, zIndex: 3)
+        router.updateWindowLayout(layout, for: frontID, zIndex: 7)
+
+        XCTAssertEqual(router.window(at: CGPoint(x: 0.5, y: 0.5)), frontID)
+    }
+
     func testStatusBarActionCanBeClickedWhileWindowIsActive() {
         let router = InputRouter()
         let windowID = UUID()
@@ -95,6 +187,35 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(receivedAction, .dashboard)
     }
 
+    func testDockConsumesClickAndSelectsWindow() {
+        let router = InputRouter()
+        let activeWindowID = UUID()
+        let dockWindowID = UUID()
+        let target = InputTargetSpy()
+        var selectedWindowID: UUID?
+        var receivedStatusAction: StatusBarAction?
+        let hitFrame = CGRect(x: 400, y: 800, width: 200, height: 120)
+        let canvasSize = CGSize(width: 1_000, height: 1_000)
+        router.register(target, for: activeWindowID)
+        router.updateWindowLayout(
+            WindowChromeLayout(size: canvasSize),
+            for: activeWindowID
+        )
+        router.updateStatusBarHitFrames([.dashboard: hitFrame], in: canvasSize)
+        router.updateDockHitFrames([dockWindowID: hitFrame], in: canvasSize)
+        router.statusBarActionHandler = { receivedStatusAction = $0 }
+        router.dockActionHandler = { selectedWindowID = $0 }
+
+        router.movePointer(to: CGPoint(x: 0.5, y: 0.85), in: activeWindowID)
+        target.commands.removeAll()
+        router.pointerDown(in: activeWindowID)
+        router.pointerUp(in: activeWindowID)
+
+        XCTAssertEqual(selectedWindowID, dockWindowID)
+        XCTAssertNil(receivedStatusAction)
+        XCTAssertTrue(target.commands.isEmpty)
+    }
+
     func testChromeButtonRunsActionWithoutClickingSurface() {
         let router = InputRouter()
         let target = InputTargetSpy()
@@ -104,7 +225,7 @@ final class InputRouterTests: XCTestCase {
         router.updateWindowLayout(WindowChromeLayout(size: CGSize(width: 1_000, height: 500)), for: id)
         router.chromeActionHandler = { _, action in receivedAction = action }
 
-        router.movePointer(to: CGPoint(x: 0.02, y: 0.98), in: id)
+        router.movePointer(to: CGPoint(x: 0.8, y: 0.05), in: id)
         router.pointerDown(in: id)
         router.pointerUp(in: id)
 
@@ -122,21 +243,54 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(router.chromeRegion(in: id), .moveHandle)
     }
 
-    func testWindowDistanceButtonsRunChromeActions() {
+    func testResizeHandleCanBeDetectedWithoutClickingSurface() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let id = UUID()
+        router.register(target, for: id)
+        router.updateWindowLayout(WindowChromeLayout(size: CGSize(width: 1_000, height: 500)), for: id)
+
+        router.movePointer(to: CGPoint(x: 0.99, y: 0.534), in: id)
+        target.commands.removeAll()
+        router.pointerDown(in: id)
+        router.pointerUp(in: id)
+
+        XCTAssertEqual(router.chromeRegion(in: id), .resizeHandle)
+        XCTAssertTrue(target.commands.isEmpty)
+    }
+
+    func testPointerCanMoveWithSurfaceDispatchDisabledDuringResize() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let id = UUID()
+        router.register(target, for: id)
+        router.updateWindowLayout(WindowChromeLayout(size: CGSize(width: 1_000, height: 500)), for: id)
+
+        router.movePointer(
+            delta: CGVector(dx: 0.1, dy: 0),
+            in: id,
+            dispatchesToSurface: false
+        )
+
+        XCTAssertEqual(router.cursor, CGPoint(x: 0.6, y: 0.5))
+        XCTAssertTrue(target.commands.isEmpty)
+    }
+
+    func testOrientationAndExpandButtonsRunChromeActions() {
         let router = InputRouter()
         let id = UUID()
         var receivedActions: [WindowChromeAction] = []
         router.updateWindowLayout(WindowChromeLayout(size: CGSize(width: 1_000, height: 500)), for: id)
         router.chromeActionHandler = { _, action in receivedActions.append(action) }
 
-        router.movePointer(to: CGPoint(x: 0.08, y: 0.98), in: id)
+        router.movePointer(to: CGPoint(x: 0.2, y: 0.05), in: id)
         router.pointerDown(in: id)
         router.pointerUp(in: id)
-        router.movePointer(to: CGPoint(x: 0.92, y: 0.98), in: id)
+        router.movePointer(to: CGPoint(x: 0.6, y: 0.05), in: id)
         router.pointerDown(in: id)
         router.pointerUp(in: id)
 
-        XCTAssertEqual(receivedActions, [.moveFarther, .moveCloser])
+        XCTAssertEqual(receivedActions, [.toggleOrientation, .toggleExpanded])
     }
 
     func testDashboardClickRunsActionWhenThereIsNoActiveWindow() {
@@ -251,6 +405,54 @@ final class InputRouterTests: XCTestCase {
         router.movePointer(to: CGPoint(x: 0.5, y: 0.2), in: nil)
 
         XCTAssertEqual(feedbackCount, 2)
+    }
+
+    func testTopmostSpatialPanelReceivesLocalPointerAndFocus() {
+        let router = InputRouter()
+        let windowID = UUID()
+        let backTarget = InputTargetSpy()
+        let frontTarget = InputTargetSpy()
+        let canvas = CGSize(width: 1_000, height: 1_000)
+        router.updateWindowLayout(WindowChromeLayout(size: canvas), for: windowID, zIndex: 4)
+        router.register(backTarget, for: "back", in: windowID)
+        router.register(frontTarget, for: "front", in: windowID)
+        router.updatePanelLayouts([
+            SpatialPanelInputLayout(
+                windowID: windowID,
+                panelID: "back",
+                frame: CGRect(x: 200, y: 200, width: 400, height: 400),
+                canvasSize: canvas,
+                appZIndex: 4,
+                layer: 0,
+                depth: 1.2
+            ),
+            SpatialPanelInputLayout(
+                windowID: windowID,
+                panelID: "front",
+                frame: CGRect(x: 300, y: 300, width: 400, height: 400),
+                canvasSize: canvas,
+                appZIndex: 4,
+                layer: 1,
+                depth: 0.9
+            ),
+        ])
+        var focused: SpatialPanelID?
+        router.panelFocusHandler = { _, panelID in focused = panelID }
+
+        router.movePointer(to: CGPoint(x: 0.5, y: 0.5), in: windowID)
+        frontTarget.commands.removeAll()
+        router.pointerDown(in: windowID)
+        router.pointerUp(in: windowID)
+
+        XCTAssertEqual(focused, "front")
+        XCTAssertTrue(backTarget.commands.isEmpty)
+        XCTAssertEqual(
+            frontTarget.commands,
+            [
+                .pointerDown(normalizedPosition: CGPoint(x: 0.5, y: 0.5)),
+                .pointerUp(normalizedPosition: CGPoint(x: 0.5, y: 0.5)),
+            ]
+        )
     }
 }
 

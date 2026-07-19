@@ -17,6 +17,7 @@ final class WatchRemoteController: NSObject {
     @ObservationIgnored private let inputRouter: InputRouter
     @ObservationIgnored private let surfaces: SurfaceRegistry
     @ObservationIgnored private let headPose: HeadPoseController
+    @ObservationIgnored private let voiceAssistant: VoiceAssistantCoordinator
     @ObservationIgnored private var session: WCSession?
 
     init(
@@ -24,12 +25,14 @@ final class WatchRemoteController: NSObject {
         inputRouter: InputRouter,
         surfaces: SurfaceRegistry,
         headPose: HeadPoseController,
+        voiceAssistant: VoiceAssistantCoordinator,
         activatesSession: Bool = true
     ) {
         self.workspace = workspace
         self.inputRouter = inputRouter
         self.surfaces = surfaces
         self.headPose = headPose
+        self.voiceAssistant = voiceAssistant
         super.init()
 
         guard activatesSession else { return }
@@ -68,7 +71,8 @@ final class WatchRemoteController: NSObject {
                 )
             },
             trackingStatus: headPose.statusText,
-            isTracking: headPose.isTracking
+            isTracking: headPose.isTracking,
+            voiceAssistantPhase: voiceAssistant.state.phase.rawValue
         )
     }
 
@@ -105,6 +109,8 @@ final class WatchRemoteController: NSObject {
             surfaces.remove(windowID: id)
         case .back:
             inputRouter.back(in: workspace.activeWindowID)
+        case .toggleVoiceAssistant:
+            voiceAssistant.toggle()
         case .requestState:
             break
         }
@@ -116,7 +122,7 @@ final class WatchRemoteController: NSObject {
 
     private func commandChangesWorkspace(_ command: WatchControlCommand) -> Bool {
         switch command {
-        case .focusWindow, .openWindow, .minimizeWindow, .closeWindow, .recenter, .requestState:
+        case .focusWindow, .openWindow, .minimizeWindow, .closeWindow, .recenter, .toggleVoiceAssistant, .requestState:
             true
         case .pointerDelta, .scroll, .click, .back:
             false

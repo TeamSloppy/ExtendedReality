@@ -1,3 +1,4 @@
+@preconcurrency import ARKit
 @preconcurrency import CoreMotion
 import Foundation
 
@@ -5,7 +6,7 @@ import Foundation
 /// `-debugSocketURL` launch argument is present. The production app remains
 /// completely inactive when that UserDefaults value is missing.
 @MainActor
-final class DebugSocketStreamer {
+final class DebugSocketStreamer: NSObject, ARSessionDelegate {
     private struct PhoneMotion {
         var orientation = HeadPose.identity
         var acceleration = CMAcceleration()
@@ -17,7 +18,11 @@ final class DebugSocketStreamer {
     private let headPose: HeadPoseController
     private let watchRemote: WatchRemoteController
     private let motionManager = CMMotionManager()
+    private let arSession = ARSession()
     private var phoneMotion = PhoneMotion()
+    private var phoneWorldPosition = SIMD3<Double>(0.86, -0.42, 0.24)
+    private var arReferencePosition: SIMD3<Double>?
+    private var arTrackingState = "unavailable"
     private var socket: URLSessionWebSocketTask?
     private var streamTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
@@ -30,13 +35,27 @@ final class DebugSocketStreamer {
         self.workspace = workspace
         self.headPose = headPose
         self.watchRemote = watchRemote
+        super.init()
 
         guard let rawURL = UserDefaults.standard.string(forKey: "debugSocketURL"),
               let url = URL(string: rawURL),
               url.scheme == "ws" || url.scheme == "wss" else { return }
 
         startPhoneMotion()
+        startPhoneWorldTracking()
         connect(to: url)
+    }
+
+    private func startPhoneWorldTracking() {
+        guard ARWorldTrackingConfiguration.isSupported else {
+            arTrackingState = "unsupported"
+            return
+        }
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.worldAlignment = .gravity
+        arSession.delegate = self
+        arSession.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        arTrackingState = "initializing"
     }
 
     private func startPhoneMotion() {
@@ -118,7 +137,8 @@ final class DebugSocketStreamer {
                 "phone": poseDictionary(phoneMotion.orientation).merging([
                     "acceleration": vectorDictionary(phoneMotion.acceleration),
                     "gravity": vectorDictionary(phoneMotion.gravity),
-                    "rotationRate": rotationDictionary(phoneMotion.rotationRate)
+                    "rotationRate": rotationDictionary(phoneMotion.rotationRate),
+                    "positionTracking": arTrackingState
                 ]) { _, new in new },
                 "watch": [
                     "connected": watchRemote.isWatchReachable,
@@ -127,7 +147,15 @@ final class DebugSocketStreamer {
             ],
             "devices": [
                 "head": ["position": ["x": 0, "y": 0.35, "z": 0]],
-                "phone": ["position": ["x": 0.86, "y": -0.42, "z": 0.24]],
+                "phone": [
+                    "position": [
+                        "x": phoneWorldPosition.x,
+                        "y": phoneWorldPosition.y,
+                        "z": phoneWorldPosition.z
+                    ],
+                    "positionSource": "ARKit",
+                    "tracking": arTrackingState
+                ],
                 "watch": ["position": ["x": -0.72, "y": -0.4, "z": 0.15]]
             ],
             "windows": workspace.windows.map(windowDictionary)
@@ -169,5 +197,49 @@ final class DebugSocketStreamer {
             "isMinimized": window.isMinimized,
             "focused": workspace.activeWindowID == window.id
         ]
+    }
+}
+
+extension DebugSocketStreamer {
+    nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        let column = frame.camera.transform.columns.3
+        let x = Double(column.x)
+        let y = Double(column.y)
+        let z = Double(column.z)
+        let trackingState: String
+        switch frame.camera.trackingState {
+        case .normal:
+            trackingState = "normal"
+        case .notAvailable:
+            trackingState = "notAvailable"
+        case .limited(let reason):
+            trackingState = "limited:\(String(describing: reason))"
+        }
+        Task { @MainActor [weak self] in
+            self?.consumeARPosition(x: x, y: y, z: z, trackingState: trackingState)
+        }
+    }
+
+    nonisolated func session(_ session: ARSession, didFailWithError error: any Error) {
+        let message = "error:\(error.localizedDescription)"
+        Task { @MainActor [weak self] in
+            self?.arTrackingState = message
+        }
+    }
+
+    private func consumeARPosition(
+        x: Double,
+        y: Double,
+        z: Double,
+        trackingState: String
+    ) {
+        let position = SIMD3<Double>(x, y, z)
+        if arReferencePosition == nil {
+            arReferencePosition = position
+        }
+        guard let arReferencePosition else { return }
+        let delta = position - arReferencePosition
+        phoneWorldPosition = SIMD3<Double>(0.86, -0.42, 0.24) + delta
+        arTrackingState = trackingState
     }
 }

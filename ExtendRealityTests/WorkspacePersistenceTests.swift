@@ -119,4 +119,114 @@ final class WorkspacePersistenceTests: XCTestCase {
             accuracy: 0.001
         )
     }
+
+    func testWindowResizeHasNoUpperSizeLimitButKeepsMinimumSize() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+        let window = store.addWindow(kind: .browser)
+
+        store.resizeWindow(window.id, normalizedDelta: 1)
+
+        XCTAssertGreaterThan(try XCTUnwrap(store.activeWindow).transform.width, 0.95)
+        XCTAssertGreaterThan(try XCTUnwrap(store.activeWindow).transform.height, 0.90)
+
+        store.resizeWindow(window.id, normalizedDelta: -100)
+
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).transform.width, 0.35, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).transform.height, 0.30, accuracy: 0.001)
+    }
+
+    func testWindowLayoutOrientationCanBeToggled() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+        let window = store.addWindow(kind: .browser)
+
+        store.toggleLayoutOrientation(window.id)
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).effectiveLayoutOrientation, .vertical)
+        XCTAssertLessThan(try XCTUnwrap(store.activeWindow).layoutContentAspectRatio, 1)
+
+        store.toggleLayoutOrientation(window.id)
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).effectiveLayoutOrientation, .horizontal)
+        XCTAssertGreaterThan(try XCTUnwrap(store.activeWindow).layoutContentAspectRatio, 1)
+    }
+
+    func testExpandedWindowRestoresItsPreviousTransform() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+        let window = store.addWindow(kind: .browser)
+        let originalTransform = try XCTUnwrap(store.activeWindow).transform
+        let headPose = HeadPose(yaw: -10, pitch: 4, roll: 0, timestamp: 1)
+
+        store.toggleExpanded(window.id, for: headPose)
+        XCTAssertTrue(store.isExpanded(window.id))
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).transform.yaw, 10)
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).transform.pitch, 4)
+
+        store.toggleExpanded(window.id, for: headPose)
+        XCTAssertFalse(store.isExpanded(window.id))
+        XCTAssertEqual(try XCTUnwrap(store.activeWindow).transform, originalTransform)
+    }
+
+    func testLegacyWindowTransformDecodesIntoSpatialAppTransform() throws {
+        struct LegacyWindow: Encodable {
+            let id: UUID
+            let title: String
+            let source: WindowSource
+            let transform: WindowTransform3DoF
+            let zIndex: Int
+            let isMinimized: Bool
+            let contentAspectRatio: Double?
+            let layoutOrientation: WindowLayoutOrientation?
+        }
+        var transform = WindowTransform3DoF.centered
+        transform.yaw = 9
+        transform.pitch = -3
+        transform.virtualDistance = 1.4
+        transform.width = 1.08
+        let data = try JSONEncoder().encode(
+            LegacyWindow(
+                id: UUID(),
+                title: "Legacy",
+                source: .browser(url: "https://example.com"),
+                transform: transform,
+                zIndex: 3,
+                isMinimized: false,
+                contentAspectRatio: nil,
+                layoutOrientation: nil
+            )
+        )
+
+        let decoded = try JSONDecoder().decode(WorkspaceWindow.self, from: data)
+
+        XCTAssertEqual(decoded.appTransform.yaw, 9)
+        XCTAssertEqual(decoded.appTransform.pitch, -3)
+        XCTAssertEqual(decoded.appTransform.virtualDistance, 1.4)
+        XCTAssertEqual(decoded.appTransform.scale, 1.5, accuracy: 0.001)
+    }
+
+    func testSpatialWindowClientAppliesLayoutsAtomically() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+        let window = store.addWindow(kind: .browser)
+        let client = SpatialWindowClient(windowID: window.id, workspace: store)
+        let original = try XCTUnwrap(client.layout)
+        var invalid = original
+        invalid.panels.append(original.panels[0])
+
+        XCTAssertThrowsError(try client.setLayout(invalid))
+        XCTAssertEqual(client.layout, original)
+
+        try client.setLayout(.youtube)
+        XCTAssertEqual(client.layout?.panels.count, 4)
+        store.moveWindow(window.id, normalizedDelta: CGVector(dx: 0.25, dy: -0.2))
+        XCTAssertEqual(client.layout?.panels.count, 4)
+    }
 }

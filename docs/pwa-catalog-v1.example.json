@@ -40,10 +40,32 @@
         "microphone",
         "location",
         "health",
-        "focusStatus"
+        "focusStatus",
+        "spatialWindows"
       ],
       "minimumAge": 4,
       "accentHex": "#22C55E"
+    },
+    {
+      "id": "com.extendreality.spatial-video",
+      "name": "Spatial Video",
+      "summary": "Watch online videos in spatial panels and keep permitted media offline.",
+      "developer": "ExtendReality",
+      "version": "1.0.0",
+      "launchURL": "https://apps.example.com/spatial-video/",
+      "universalLink": "https://apps.example.com/spatial-video/",
+      "allowedOrigins": [
+        "https://apps.example.com"
+      ],
+      "displayModes": [
+        "window",
+        "widget"
+      ],
+      "requestedCapabilities": [
+        "spatialWindows"
+      ],
+      "minimumAge": 13,
+      "accentHex": "#E11D48"
     }
   ]
 }

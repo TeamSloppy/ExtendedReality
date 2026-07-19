@@ -40,6 +40,7 @@ const initialResults = {
   location: { status: 'idle', detail: 'Requires host permission' },
   health: { status: 'idle', detail: 'Requires host permission' },
   focus: { status: 'idle', detail: 'Requires host permission' },
+  spatialWindows: { status: 'idle', detail: 'Requires host permission' },
 }
 
 function formatBytes(bytes) {
@@ -224,6 +225,40 @@ function PWALab() {
     return format(await api[method]())
   })
 
+  const createSpatialLayout = () => execute('spatialWindows', async () => {
+    const windows = window.extendReality?.windows
+    if (!windows) throw new Error('Spatial window API unavailable')
+    await windows.setLayout({
+      primaryPanelID: 'primary',
+      panels: [
+        {
+          id: 'primary',
+          accessibilityLabel: 'PWA Lab diagnostics',
+          placement: { yaw: 0, pitch: 0, depth: 0, width: 0.72, height: 0.68, layer: 0 },
+        },
+        {
+          id: 'spatial-tools',
+          accessibilityLabel: 'PWA Lab spatial tools',
+          url: './?extendDisplayMode=widget',
+          placement: { yaw: 24, pitch: 1, depth: 0.08, width: 0.28, height: 0.42, layer: 1 },
+        },
+      ],
+    })
+    await windows.update('spatial-tools', {
+      accessibilityLabel: 'PWA Lab spatial tools',
+      url: './?extendDisplayMode=widget',
+      placement: { yaw: 22, pitch: 0, depth: 0.05, width: 0.28, height: 0.40, layer: 1 },
+    })
+    return 'Created and updated a same-origin secondary panel'
+  })
+
+  const resetSpatialLayout = () => execute('spatialWindows', async () => {
+    const windows = window.extendReality?.windows
+    if (!windows) throw new Error('Spatial window API unavailable')
+    await windows.reset()
+    return 'Composition reset to the primary panel'
+  })
+
   const passed = Object.values(results).filter((result) => result.status === 'pass').length
   const failed = Object.values(results).filter((result) => result.status === 'fail').length
 
@@ -278,9 +313,12 @@ function PWALab() {
                 </div>
               )}
             </TestCard>
-            <TestCard id="location" icon={MapPin} title="Location" description="Read foreground location through host API v2." result={results.location} actionLabel="Read location" onRun={() => readHostCapability('location', 'getLocation', (value) => `${value.latitude.toFixed(5)}, ${value.longitude.toFixed(5)} · ±${Math.round(value.horizontalAccuracy)} m`)} />
+            <TestCard id="location" icon={MapPin} title="Location" description="Read foreground location through host API v3." result={results.location} actionLabel="Read location" onRun={() => readHostCapability('location', 'getLocation', (value) => `${value.latitude.toFixed(5)}, ${value.longitude.toFixed(5)} · ±${Math.round(value.horizontalAccuracy)} m`)} />
             <TestCard id="health" icon={HeartPulse} title="Health summary" description="Read today's limited HealthKit summary." result={results.health} actionLabel="Read summary" onRun={() => readHostCapability('health', 'getHealthSummary', (value) => `${Math.round(value.steps)} steps · ${Math.round(value.activeEnergyKilocalories)} kcal${value.latestHeartRateBPM ? ` · ${Math.round(value.latestHeartRateBPM)} bpm` : ''}`)} />
             <TestCard id="focus" icon={Focus} title="Focus status" description="Read whether ExtendReality notifications are silenced." result={results.focus} actionLabel="Read status" onRun={() => readHostCapability('focus', 'getFocusStatus', (value) => value.isFocused ? 'Focus is silencing notifications' : 'Notifications are not silenced')} />
+            <TestCard id="spatialWindows" icon={AppWindow} title="Spatial windows" description="Create, update, and reset a same-origin panel composition." result={results.spatialWindows} actionLabel="Create panels" onRun={createSpatialLayout}>
+              <button type="button" className="stop-button" onClick={resetSpatialLayout}><Square aria-hidden="true" /> Reset layout</button>
+            </TestCard>
             <article className="test-card external-card">
               <div className="card-heading">
                 <span className="card-icon" aria-hidden="true"><ExternalLink /></span>

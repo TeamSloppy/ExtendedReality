@@ -30,21 +30,23 @@ targets:
       properties:
         CFBundleDisplayName: ExtendReality
         UILaunchScreen: {}
-        NSLocalNetworkUsageDescription: ExtendReality connects to your Mac for remote desktop sessions on the local network.
+        NSLocalNetworkUsageDescription: ExtendReality connects to your Mac and Sloppy Core on the local network for remote desktop and voice-assistant sessions.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSBonjourServices:
           - _rfb._tcp.
           - _extend-reality._tcp.
         NSPhotoLibraryUsageDescription: ExtendReality displays photos and videos you select in the glasses workspace.
+        NSPhotoLibraryAddUsageDescription: ExtendReality saves screenshots and recordings of the glasses display to your photo library.
         NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.
-        NSCameraUsageDescription: ExtendReality lets you grant selected web apps access to the camera.
-        NSMicrophoneUsageDescription: ExtendReality lets you grant selected web apps access to the microphone.
+        NSCameraUsageDescription: ExtendReality uses the camera for debug-only spatial tracking and lets you grant selected web apps camera access.
+        NSMicrophoneUsageDescription: ExtendReality records your voice when you invoke Sloppy Assistant and lets you grant selected web apps microphone access.
+        NSSpeechRecognitionUsageDescription: ExtendReality converts your voice into text for local Sloppy Assistant input.
         NSLocationWhenInUseUsageDescription: ExtendReality uses your location while the app is open to provide location-aware spatial apps.
         NSLocationDefaultAccuracyReduced: true
         NSHealthShareUsageDescription: ExtendReality reads your steps, active energy, and heart rate to show a private activity summary.
         NSFocusStatusUsageDescription: ExtendReality reads whether Focus is active so spatial apps can respect your availability.
-        ExtendRealityPWACatalogURL: ""
+        ExtendRealityPWACatalogURL: "https://xr.sloppy.team/plugins/catalog.json"
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:
@@ -62,7 +64,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality
         PRODUCT_NAME: ExtendReality
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SUPPORTS_MACCATALYST: NO
         CODE_SIGN_ENTITLEMENTS: ExtendReality/Resources/ExtendReality.entitlements
@@ -149,6 +151,40 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: ExtendRealityMac
+  ExtendRealityPWAStudio:
+    type: application
+    platform: macOS
+    sources:
+      - path: ExtendRealityPWAStudio
+      - path: ExtendReality/PWA/PWAApp.swift
+      - path: ExtendReality/Domain/WorkspaceModels.swift
+    info:
+      path: ExtendRealityPWAStudio/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ExtendReality PWA Studio
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSCameraUsageDescription: ExtendReality PWA Studio tests PWA camera access.
+        NSMicrophoneUsageDescription: ExtendReality PWA Studio tests PWA microphone access.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.pwa-studio
+        PRODUCT_NAME: ExtendRealityPWAStudio
+        CODE_SIGN_ENTITLEMENTS: ExtendRealityPWAStudio/Resources/ExtendRealityPWAStudio.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  ExtendRealityPWAStudioTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ExtendRealityPWAStudioTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendRealityPWAStudioTests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: ExtendRealityPWAStudio
   ExtendRealityTests:
     type: bundle.unit-test
     platform: iOS
@@ -189,3 +225,11 @@ schemes:
     test:
       targets:
         - ExtendRealityMacTests
+  ExtendRealityPWAStudio:
+    build:
+      targets:
+        ExtendRealityPWAStudio: all
+        ExtendRealityPWAStudioTests: [test]
+    test:
+      targets:
+        - ExtendRealityPWAStudioTests

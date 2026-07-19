@@ -345,7 +345,7 @@ private struct PWAInstalledAppView: View {
 
     private func update(_ capability: PWACapability, granted: Bool) {
         do {
-            try environment.pwaStore.setCapability(capability, granted: granted, for: current.id)
+            try environment.setPWACapability(capability, granted: granted, for: current.id)
         } catch {
             errorMessage = error.localizedDescription
         }

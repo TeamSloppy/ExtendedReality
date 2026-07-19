@@ -23,3 +23,29 @@ final class YouTubeVideoIDParserTests: XCTestCase {
     }
 }
 
+@MainActor
+final class YouTubeSessionStateTests: XCTestCase {
+    func testPlayerTelemetryUpdatesSharedPlaybackState() {
+        let session = YouTubeSession(initialVideoID: nil, loadsContent: false)
+
+        session.receivePlayerState([
+            "ready": true,
+            "state": 1,
+            "time": 42.5,
+            "duration": 180.0,
+        ])
+
+        XCTAssertTrue(session.isReady)
+        XCTAssertTrue(session.isPlaying)
+        XCTAssertEqual(session.currentTime, 42.5)
+        XCTAssertEqual(session.duration, 180)
+    }
+
+    func testSearchPanelKeyboardInputUsesSharedQuery() {
+        let session = YouTubeSession(initialVideoID: nil, loadsContent: false)
+
+        session.handle(.insertText("spatial computing"), in: "search")
+
+        XCTAssertEqual(session.query, "spatial computing")
+    }
+}

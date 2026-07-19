@@ -21,6 +21,7 @@ test('generates valid pilot entries for both display modes', () => {
   assert.deepEqual(catalog.apps.map((app) => app.id), [
     'com.extendreality.spatial-board',
     'com.extendreality.pwa-lab',
+    'com.extendreality.spatial-video',
   ])
   assert.ok(catalog.apps.every((app) => app.launchURL.startsWith('https://apps.example.com/')))
   assert.ok(catalog.apps.every((app) => app.displayModes.includes('window')))
@@ -31,7 +32,10 @@ test('generates valid pilot entries for both display modes', () => {
     'location',
     'health',
     'focusStatus',
+    'spatialWindows',
   ])
+  assert.deepEqual(catalog.apps[2].requestedCapabilities, ['spatialWindows'])
+  assert.equal(catalog.apps[2].minimumAge, 13)
 })
 
 test('generates GitHub project Pages URLs with an origin-only allowlist', () => {
@@ -42,4 +46,8 @@ test('generates GitHub project Pages URLs with an origin-only allowlist', () => 
     'https://spectraldragon.github.io/ExtendedReality/spatial-board/',
   )
   assert.deepEqual(catalog.apps[0].allowedOrigins, ['https://spectraldragon.github.io'])
+  assert.equal(
+    catalog.apps[2].launchURL,
+    'https://spectraldragon.github.io/ExtendedReality/spatial-video/',
+  )
 })

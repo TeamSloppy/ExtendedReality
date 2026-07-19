@@ -12,6 +12,7 @@ final class AppEnvironment {
     let pwaStore: PWAStore
     let systemData: SystemDataStore
     let inputRouter: InputRouter
+    let hardwareMouseInput: HardwareMouseInput
     let surfaces: SurfaceRegistry
     let headPoseProvider: any HeadPoseProvider
     let headPose: HeadPoseController
@@ -20,8 +21,12 @@ final class AppEnvironment {
     let keychain: KeychainStore
     let youtubeAPI: YouTubeAPIClient
     let macStreamClient: MacStreamClient
+    let externalDisplayCapture: ExternalDisplayCaptureCoordinator
+    let voiceAssistantSettings: VoiceAssistantSettings
+    let voiceAssistant: VoiceAssistantCoordinator
 
     private let defaults: UserDefaults
+    private var macStreamWindowIDsByEndpoint: [String: UUID] = [:]
 
     private init(
         storesDataInMemory: Bool = false,
@@ -44,7 +49,8 @@ final class AppEnvironment {
         }
 
         let persistence = WorkspacePersistence(container: modelContainer)
-        workspace = WorkspaceStore(persistence: persistence)
+        let workspace = WorkspaceStore(persistence: persistence)
+        self.workspace = workspace
         dashboard = DashboardStore(defaults: dashboardDefaults)
         let pwaStore = PWAStore(defaults: dashboardDefaults)
         self.pwaStore = pwaStore
@@ -54,11 +60,19 @@ final class AppEnvironment {
         )
         self.systemData = systemData
         inputRouter = InputRouter()
+        hardwareMouseInput = HardwareMouseInput(
+            inputRouter: inputRouter,
+            activeWindowID: { [weak workspace] in workspace?.activeWindowID },
+            startsMonitoring: !isRunningTests && !storesDataInMemory
+        )
         keychain = KeychainStore(service: keychainService)
+        voiceAssistantSettings = VoiceAssistantSettings(defaults: dashboardDefaults, keychain: keychain)
         youtubeAPI = YouTubeAPIClient()
         macStreamClient = MacStreamClient()
+        externalDisplayCapture = ExternalDisplayCaptureCoordinator()
         surfaces = SurfaceRegistry(
             inputRouter: inputRouter,
+            workspace: workspace,
             keychain: keychain,
             pwaCapabilityProvider: { appID, capability in
                 pwaStore.installation(for: appID)?.grants(capability) == true
@@ -72,11 +86,18 @@ final class AppEnvironment {
             : AirPodsHeadPoseProvider()
         headPoseProvider = provider
         headPose = HeadPoseController(provider: provider)
+        voiceAssistant = VoiceAssistantCoordinator(
+            settings: voiceAssistantSettings,
+            workspace: workspace,
+            contextProvider: surfaces,
+            defaults: dashboardDefaults
+        )
         watchRemote = WatchRemoteController(
             workspace: workspace,
             inputRouter: inputRouter,
             surfaces: surfaces,
             headPose: headPose,
+            voiceAssistant: voiceAssistant,
             activatesSession: activatesWatchConnectivity && !isRunningTests
         )
         debugSocket = DebugSocketStreamer(
@@ -84,14 +105,21 @@ final class AppEnvironment {
             headPose: headPose,
             watchRemote: watchRemote
         )
+        macStreamClient.cursorPositionHandler = { [weak self] position in
+            self?.applyMacCursorPosition(position)
+        }
+        voiceAssistant.onStateChange = { [weak self] in
+            self?.watchRemote.syncState()
+        }
         inputRouter.chromeActionHandler = { [weak self] windowID, action in
             switch action {
-            case .moveFarther:
-                self?.workspace.adjustWindowDistance(windowID, by: 0.15)
-            case .moveCloser:
-                self?.workspace.adjustWindowDistance(windowID, by: -0.15)
+            case .toggleOrientation:
+                self?.workspace.toggleLayoutOrientation(windowID)
             case .minimize:
                 self?.minimizeWindow(windowID)
+            case .toggleExpanded:
+                guard let self else { return }
+                workspace.toggleExpanded(windowID, for: headPose.pose)
             case .close:
                 self?.closeWindow(windowID)
             }
@@ -117,12 +145,26 @@ final class AppEnvironment {
                 headPose.recenter()
             }
         }
+        inputRouter.dockActionHandler = { [weak self] windowID in
+            guard let self else { return }
+            workspace.focus(windowID)
+            inputRouter.setAppSwitcherPresented(false)
+            watchRemote.syncState()
+        }
         inputRouter.appSwitcherActionHandler = { [weak self] windowID in
             guard let self else { return }
             workspace.focusAndCenter(windowID, for: headPose.pose)
             inputRouter.setAppSwitcherPresented(false)
             inputRouter.resetCursor()
             watchRemote.syncState()
+        }
+        inputRouter.windowFocusHandler = { [weak self] windowID in
+            guard let self else { return }
+            workspace.focus(windowID)
+            watchRemote.syncState()
+        }
+        inputRouter.panelFocusHandler = { [weak workspace] windowID, panelID in
+            workspace?.focusPanel(panelID, in: windowID)
         }
         inputRouter.pointerHoverHandler = {
             ControllerHaptics.hover()
@@ -147,6 +189,18 @@ final class AppEnvironment {
             ControllerHaptics.click()
         } catch {
             ControllerHaptics.error()
+        }
+    }
+
+    func setMacCursorSyncEnabled(_ isEnabled: Bool) {
+        let shouldRestart = macStreamClient.isConnected
+        macStreamClient.setCursorSyncEnabled(isEnabled)
+        if !isEnabled {
+            inputRouter.hideCursor()
+        }
+        guard shouldRestart else { return }
+        Task { @MainActor [weak self] in
+            await self?.openMacStream()
         }
     }
 
@@ -230,6 +284,16 @@ final class AppEnvironment {
         pwaStore.uninstall(appID)
     }
 
+    func setPWACapability(_ capability: PWACapability, granted: Bool, for appID: String) throws {
+        try pwaStore.setCapability(capability, granted: granted, for: appID)
+        guard capability == .spatialWindows, !granted else { return }
+        for window in workspace.windows {
+            guard case .pwa(let installation, _) = window.source, installation.id == appID else { continue }
+            workspace.resetLayout(for: window.id)
+            surfaces.removePanels(windowID: window.id)
+        }
+    }
+
     func activateDashboardItem(_ id: UUID) {
         guard let item = dashboard.item(id: id) else { return }
         switch item.content {
@@ -264,16 +328,38 @@ final class AppEnvironment {
                   ["http", "https"].contains(scheme) else { return nil }
             return window.id
         }
+        macStreamWindowIDsByEndpoint = [:]
         previousStreamIDs.forEach(closeWindow)
 
         for endpoint in session.streams {
             let window = workspace.addWindow(
                 title: endpoint.name,
-                source: .remoteDesktop(host: endpoint.url.absoluteString)
+                source: .remoteDesktop(host: endpoint.url.absoluteString),
+                transform: .macStream,
+                contentAspectRatio: endpoint.aspectRatio
             )
+            macStreamWindowIDsByEndpoint[endpoint.id] = window.id
             surfaces.prepare(for: [window])
         }
         watchRemote.syncState()
+    }
+
+    private func applyMacCursorPosition(_ position: MacCursorPosition) {
+        guard macStreamClient.isCursorSyncEnabled else { return }
+        guard position.visible,
+              let streamID = position.streamID,
+              let x = position.x,
+              let y = position.y,
+              x.isFinite,
+              y.isFinite,
+              let windowID = macStreamWindowIDsByEndpoint[streamID] else {
+            inputRouter.hideCursor()
+            return
+        }
+        inputRouter.movePointer(
+            toSurfacePosition: CGPoint(x: x, y: y),
+            in: windowID
+        )
     }
 }
 
@@ -329,6 +415,8 @@ extension View {
             .environment(environment.inputRouter)
             .environment(environment.headPose)
             .environment(environment.systemData)
+            .environment(environment.voiceAssistant)
+            .environment(environment.voiceAssistantSettings)
             .defaultAppStorage(PreviewFixtures.userDefaults)
     }
 }

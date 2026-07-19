@@ -10,6 +10,7 @@ await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 await cp(resolve('spatial-board/dist'), resolve(output, 'spatial-board'), { recursive: true })
 await cp(resolve('pwa-lab/dist'), resolve(output, 'pwa-lab'), { recursive: true })
+await cp(resolve('spatial-video/dist'), resolve(output, 'spatial-video'), { recursive: true })
 await writeFile(resolve(output, 'catalog.json'), `${JSON.stringify(createCatalog(publicBaseURL), null, 2)}\n`)
 
 console.log(`Assembled static site in ${output}`)

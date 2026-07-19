@@ -64,6 +64,10 @@ final class WatchControlModel: NSObject {
         isReachable ? "iPhone connected" : "Open iPhone app"
     }
 
+    var isVoiceAssistantActive: Bool {
+        snapshot.voiceAssistantPhase != "idle" && snapshot.voiceAssistantPhase != "cancelled"
+    }
+
     func togglePointer() {
         isPointerActive ? stopPointer() : startPointer()
     }
@@ -129,6 +133,11 @@ final class WatchControlModel: NSObject {
 
     func back() {
         send(.back)
+    }
+
+    func toggleVoiceAssistant() {
+        send(.toggleVoiceAssistant, expectsState: true)
+        WKInterfaceDevice.current().play(.click)
     }
 
     func refresh() {

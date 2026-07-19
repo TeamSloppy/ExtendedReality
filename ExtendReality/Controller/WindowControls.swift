@@ -114,15 +114,11 @@ struct YouTubeControlsView: View {
     @Bindable var session: YouTubeSession
     let apiClient: YouTubeAPIClient
     @AppStorage("youtube.apiKey") private var apiKey = ""
-    @State private var query = ""
-    @State private var results: [YouTubeVideo] = []
-    @State private var errorMessage: String?
-    @State private var isSearching = false
 
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                TextField("YouTube URL, video ID, or search", text: $query)
+                TextField("YouTube URL, video ID, or search", text: $session.query)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .onSubmit(submit)
@@ -130,16 +126,16 @@ struct YouTubeControlsView: View {
                     .buttonStyle(.borderedProminent)
             }
 
-            if isSearching { ProgressView().controlSize(.small) }
-            if let errorMessage {
+            if session.isSearching { ProgressView().controlSize(.small) }
+            if let errorMessage = session.searchErrorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            if !results.isEmpty {
+            if !session.results.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
-                        ForEach(results) { video in
+                        ForEach(session.results) { video in
                             Button {
                                 session.load(video: video)
                             } label: {
@@ -177,30 +173,13 @@ struct YouTubeControlsView: View {
         }
         .padding(12)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .onAppear {
+            session.configureSearch(apiClient: apiClient, apiKeyProvider: { apiKey })
+        }
     }
 
     private func submit() {
-        errorMessage = nil
-        if YouTubeVideoIDParser.parse(query) != nil {
-            session.load(query)
-            results = []
-            return
-        }
-        isSearching = true
-        Task {
-            do {
-                let found = try await apiClient.search(query: query, apiKey: apiKey)
-                await MainActor.run {
-                    results = found
-                    isSearching = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isSearching = false
-                }
-            }
-        }
+        session.submitSearch()
     }
 }
 
@@ -257,12 +236,16 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(HeadPoseController.self) private var headPose
     @Environment(SystemDataStore.self) private var systemData
+    @Environment(VoiceAssistantSettings.self) private var voiceSettings
+    @Environment(VoiceAssistantCoordinator.self) private var voiceAssistant
     @AppStorage("youtube.apiKey") private var youtubeAPIKey = ""
     @AppStorage(RemoteDisplayLayout.defaultsKey) private var remoteDisplayLayout = RemoteDisplayLayout.single
 
     var body: some View {
         NavigationStack {
             Form {
+                sloppyAssistantSection
+
                 RemoteDisplayLayoutSettingsSection(selection: $remoteDisplayLayout)
 
                 Section("YouTube Data API") {
@@ -334,6 +317,44 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var sloppyAssistantSection: some View {
+        @Bindable var settings = voiceSettings
+        return Section {
+            Toggle("Enable Sloppy Assistant", isOn: $settings.isEnabled)
+            TextField("Core URL", text: $settings.coreURLString)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+            TextField("Dashboard URL", text: $settings.dashboardURLString)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+            SecureField("Bearer token", text: $settings.authToken)
+                .textInputAutocapitalization(.never)
+
+            if voiceAssistant.availableAgents.isEmpty {
+                TextField("Agent ID", text: $settings.agentID)
+                    .textInputAutocapitalization(.never)
+            } else {
+                Picker("Agent", selection: $settings.agentID) {
+                    ForEach(voiceAssistant.availableAgents) { agent in
+                        Text(agent.displayName).tag(agent.id)
+                    }
+                }
+            }
+
+            Toggle("Share active window", isOn: $settings.sharesActiveContext)
+            Button("Test Sloppy Connection", systemImage: "network") {
+                Task { await voiceAssistant.testConnection() }
+            }
+            Text(voiceAssistant.connectionStatus)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("Sloppy Assistant")
+        } footer: {
+            Text("Voice questions are sent to the selected Sloppy agent. When active-window sharing is enabled, ExtendReality also attaches a compressed screenshot and focused browser text.")
         }
     }
 

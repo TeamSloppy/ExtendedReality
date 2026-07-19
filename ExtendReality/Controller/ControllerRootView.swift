@@ -58,6 +58,7 @@ struct ControllerRootView: View {
         }
         .onDisappear {
             laserController.stop()
+            environment.hardwareMouseInput.setCaptureEnabled(false)
         }
     }
 
@@ -81,6 +82,11 @@ struct ControllerRootView: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .overlay {
+            if environment.hardwareMouseInput.isCaptureEnabled {
+                mouseCaptureOverlay
+            }
+        }
     }
 
     private func handleSelectedPhotoChange(_ oldItem: PhotosPickerItem?, _ item: PhotosPickerItem?) {
@@ -156,12 +162,82 @@ struct ControllerRootView: View {
             .pickerStyle(.segmented)
             .frame(height: 50)
             .accessibilityIdentifier("inputMode")
+
+            Button {
+                environment.hardwareMouseInput.toggleCapture()
+                ControllerHaptics.selection()
+            } label: {
+                Image(
+                    systemName: environment.hardwareMouseInput.isCaptureEnabled
+                        ? "cursorarrow.motionlines"
+                        : "computermouse"
+                )
+                .font(.title3.weight(.semibold))
+                .frame(width: 48, height: 48)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.roundedRectangle(radius: 16))
+            .tint(environment.hardwareMouseInput.isCaptureEnabled ? .cyan : nil)
+            .disabled(!environment.hardwareMouseInput.isMouseConnected)
+            .accessibilityLabel(
+                environment.hardwareMouseInput.isCaptureEnabled
+                    ? "Return mouse to iPad"
+                    : "Move mouse to XREAL display"
+            )
+            .accessibilityHint(
+                environment.hardwareMouseInput.isMouseConnected
+                    ? "Captures the physical mouse for the spatial cursor"
+                    : "Connect a Bluetooth or USB mouse first"
+            )
+            .accessibilityIdentifier("hardwareMouse.toggleCapture")
         }
+    }
+
+    private var mouseCaptureOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.001)
+                .contentShape(Rectangle())
+                .onTapGesture {}
+
+            VStack(spacing: 14) {
+                Image(systemName: "display.and.cursorarrow")
+                    .font(.system(size: 38, weight: .medium))
+                    .foregroundStyle(.cyan)
+                Text("Mouse is on the XREAL display")
+                    .font(.headline)
+                Text("Move, click, and scroll in the glasses. Press Esc or tap below to return to iPad.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Return to iPad", systemImage: "ipad") {
+                    environment.hardwareMouseInput.setCaptureEnabled(false)
+                    ControllerHaptics.selection()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.cyan)
+                .accessibilityIdentifier("hardwareMouse.releaseCapture")
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+            .padding()
+        }
+        .ignoresSafeArea()
     }
 
     private var quickActionsDock: some View {
         HStack(spacing: 10) {
             keyboardDock
+
+            ControllerQuickActionButton(
+                title: environment.voiceAssistant.actionTitle,
+                systemImage: environment.voiceAssistant.actionSystemImage,
+                isSelected: environment.voiceAssistant.state.phase.isPresented
+            ) {
+                environment.voiceAssistant.toggle()
+                ControllerHaptics.click()
+            }
+            .disabled(!environment.voiceAssistantSettings.isEnabled)
+            .accessibilityIdentifier("voiceAssistant.toggle")
 
             if workspace.activeWindow?.kind == .gallery {
                 PhotosPicker(
@@ -333,6 +409,8 @@ private struct ControllerToolsSheet: View {
             ScrollView {
                 VStack(spacing: 18) {
                     connectionStatus
+                    macCursorSyncControls
+                    captureControls
                     launcher
                     pwaStoreSection
                     dashboardSection
@@ -389,6 +467,15 @@ private struct ControllerToolsSheet: View {
                 Text(message)
             }
         }
+        .alert("Glasses capture failed", isPresented: captureErrorPresented) {
+            Button("OK") {
+                environment.externalDisplayCapture.dismissError()
+            }
+        } message: {
+            if let message = environment.externalDisplayCapture.errorMessage {
+                Text(message)
+            }
+        }
     }
 
     private var connectionStatus: some View {
@@ -417,6 +504,104 @@ private struct ControllerToolsSheet: View {
         }
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var captureControls: some View {
+        let capture = environment.externalDisplayCapture
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Glasses capture", systemImage: "rectangle.inset.filled.and.person.filled")
+                    .font(.headline)
+                Spacer()
+                if capture.isRecording {
+                    Label("REC", systemImage: "record.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button("Screenshot", systemImage: "camera.fill") {
+                    ControllerHaptics.click()
+                    Task { await capture.captureScreenshot() }
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+                .disabled(!capture.isAttached || capture.state != .idle)
+                .accessibilityIdentifier("externalDisplay.captureScreenshot")
+
+                Button(
+                    capture.isRecording ? "Stop" : "Record",
+                    systemImage: capture.isRecording ? "stop.fill" : "record.circle"
+                ) {
+                    ControllerHaptics.click()
+                    if capture.isRecording {
+                        Task { await capture.stopRecording() }
+                    } else {
+                        capture.startRecording()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(capture.isRecording ? .red : .cyan)
+                .frame(maxWidth: .infinity)
+                .disabled(!capture.isAttached || capture.isBusy)
+                .accessibilityIdentifier("externalDisplay.toggleRecording")
+
+                if let url = capture.lastCaptureURL {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("externalDisplay.shareCapture")
+                }
+            }
+
+            if let message = capture.statusMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(capture.isRecording ? Color.red : Color.secondary)
+            } else {
+                Text("Captures the exact canvas rendered on the connected glasses display.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var macCursorSyncControls: some View {
+        Toggle(isOn: Binding(
+            get: { environment.macStreamClient.isCursorSyncEnabled },
+            set: { isEnabled in
+                environment.setMacCursorSyncEnabled(isEnabled)
+                ControllerHaptics.selection()
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Follow Mac cursor", systemImage: "cursorarrow.motionlines")
+                    .font(.headline)
+                Text("Shows the Mac pointer as the ExtendReality virtual cursor instead of embedding it in the video.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(.cyan)
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityIdentifier("macStream.cursorSync")
+    }
+
+    private var captureErrorPresented: Binding<Bool> {
+        Binding(
+            get: { environment.externalDisplayCapture.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    environment.externalDisplayCapture.dismissError()
+                }
+            }
+        )
     }
 
     private var launcher: some View {

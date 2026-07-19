@@ -51,6 +51,31 @@ actor YouTubeAPIClient {
             )
         }
     }
+
+    func video(id: String, apiKey: String, accessToken: String? = nil) async throws -> YouTubeVideo? {
+        guard !apiKey.isEmpty || accessToken != nil else { throw YouTubeAPIError.missingCredentials }
+        var components = URLComponents(string: "https://www.googleapis.com/youtube/v3/videos")!
+        var items = [
+            URLQueryItem(name: "part", value: "snippet"),
+            URLQueryItem(name: "id", value: id),
+        ]
+        if !apiKey.isEmpty { items.append(URLQueryItem(name: "key", value: apiKey)) }
+        components.queryItems = items
+        var request = URLRequest(url: components.url!)
+        if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, 200 ..< 300 ~= http.statusCode else {
+            throw YouTubeAPIError.requestFailed
+        }
+        let payload = try JSONDecoder().decode(VideoResponse.self, from: data)
+        guard let item = payload.items.first else { return nil }
+        return YouTubeVideo(
+            id: item.id,
+            title: item.snippet.title.decodingHTMLEntities,
+            channelTitle: item.snippet.channelTitle,
+            thumbnailURL: item.snippet.thumbnails.medium?.url ?? item.snippet.thumbnails.default?.url
+        )
+    }
 }
 
 enum YouTubeAPIError: LocalizedError {
@@ -95,18 +120,28 @@ private struct SearchResponse: Decodable {
 
     struct Item: Decodable {
         let id: ID
-        let snippet: Snippet
+        let snippet: YouTubeAPISnippet
     }
 
     struct ID: Decodable {
         let videoId: String?
     }
 
-    struct Snippet: Decodable {
-        let title: String
-        let channelTitle: String
-        let thumbnails: Thumbnails
+}
+
+private struct VideoResponse: Decodable {
+    let items: [Item]
+
+    struct Item: Decodable {
+        let id: String
+        let snippet: YouTubeAPISnippet
     }
+}
+
+private struct YouTubeAPISnippet: Decodable {
+    let title: String
+    let channelTitle: String
+    let thumbnails: Thumbnails
 
     struct Thumbnails: Decodable {
         let `default`: Thumbnail?
@@ -128,4 +163,3 @@ private extension String {
         ).string) ?? self
     }
 }
-

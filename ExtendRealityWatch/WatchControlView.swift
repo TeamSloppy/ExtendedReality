@@ -103,13 +103,21 @@ struct WatchControlView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(.cyan)
-        .handGestureShortcut(.primaryAction, isEnabled: controller.isReachable)
         .disabled(!controller.isReachable || controller.activeWindow == nil)
-        .accessibilityHint("Also activated by the system Double Tap gesture")
     }
 
     private var actionRow: some View {
         HStack(spacing: 6) {
+            Button {
+                controller.toggleVoiceAssistant()
+            } label: {
+                Image(systemName: controller.isVoiceAssistantActive ? "stop.fill" : "microphone.fill")
+            }
+            .tint(controller.isVoiceAssistantActive ? .orange : .purple)
+            .handGestureShortcut(.primaryAction, isEnabled: controller.isReachable)
+            .accessibilityLabel(controller.isVoiceAssistantActive ? "Stop voice assistant" : "Start voice assistant")
+            .accessibilityHint("Activated by the system Double Tap gesture")
+
             Button {
                 controller.recenter()
             } label: {

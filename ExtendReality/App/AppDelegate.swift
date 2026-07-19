@@ -30,17 +30,78 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let environment = AppEnvironment.shared
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = ControllerViewController(environment: environment)
+        window.makeKeyAndVisible()
+        self.window = window
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        AppEnvironment.shared.hardwareMouseInput.setCaptureEnabled(false)
+    }
+}
+
+@MainActor
+final class ControllerViewController: UIViewController {
+    private let environment: AppEnvironment
+    private var host: UIViewController?
+
+    init(environment: AppEnvironment) {
+        self.environment = environment
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var prefersPointerLocked: Bool {
+        environment.hardwareMouseInput.isCaptureEnabled
+    }
+
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+        environment.hardwareMouseInput.isCaptureEnabled ? .all : []
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+
         let root = ControllerRootView(environment: environment)
             .environment(environment.workspace)
             .environment(environment.dashboard)
             .environment(environment.inputRouter)
             .environment(environment.headPose)
             .environment(environment.systemData)
+            .environment(environment.voiceAssistant)
+            .environment(environment.voiceAssistantSettings)
+        let host = UIHostingController(rootView: root)
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
+        self.host = host
 
-        let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = UIHostingController(rootView: root)
-        window.makeKeyAndVisible()
-        self.window = window
+        environment.hardwareMouseInput.capturePreferenceDidChange = { [weak self] in
+            self?.setNeedsUpdateOfPrefersPointerLocked()
+            self?.setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+        }
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if environment.hardwareMouseInput.isCaptureEnabled,
+           presses.contains(where: { $0.key?.charactersIgnoringModifiers == UIKeyCommand.inputEscape }) {
+            environment.hardwareMouseInput.setCaptureEnabled(false)
+            return
+        }
+        super.pressesBegan(presses, with: event)
     }
 }
 
@@ -57,10 +118,16 @@ final class ExternalDisplaySceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = SpatialCanvasViewController(environment: .shared)
         window.makeKeyAndVisible()
         self.window = window
-        AppEnvironment.shared.workspace.isExternalDisplayConnected = true
+        let environment = AppEnvironment.shared
+        environment.externalDisplayCapture.attach(window: window)
+        environment.workspace.isExternalDisplayConnected = true
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
-        AppEnvironment.shared.workspace.isExternalDisplayConnected = false
+        let environment = AppEnvironment.shared
+        if let window {
+            environment.externalDisplayCapture.detach(window: window)
+        }
+        environment.workspace.isExternalDisplayConnected = false
     }
 }

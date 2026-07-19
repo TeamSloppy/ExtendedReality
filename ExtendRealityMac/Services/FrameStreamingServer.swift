@@ -23,17 +23,23 @@ final class FrameStreamingServer {
     private var displays: [CaptureDisplay] = []
     private var latestFrames: [CGDirectDisplayID: CGImage] = [:]
     private var latestComposite: CGImage?
+    private var usesVirtualCursor = false
     private var lastPublishTime: ContinuousClock.Instant?
     private var publicAddress: URL?
 
     var onAddressChanged: ((URL?) -> Void)?
     var onViewerCountChanged: ((Int) -> Void)?
     var onFailure: ((String) -> Void)?
-    var onStartRequested: ((StreamLayout) async throws -> Void)?
+    var onStartRequested: ((StreamLayout, Bool) async throws -> Void)?
 
-    func updateMetadata(layout: StreamLayout, displays: [CaptureDisplay]) {
+    func updateMetadata(
+        layout: StreamLayout,
+        displays: [CaptureDisplay],
+        usesVirtualCursor: Bool = false
+    ) {
         self.layout = layout
         self.displays = displays
+        self.usesVirtualCursor = usesVirtualCursor
     }
 
     func start() throws {
@@ -214,6 +220,8 @@ final class FrameStreamingServer {
             handleStartRequest(path: path, connection: connection)
         } else if method == "GET", path == "/api/v1/status" {
             sendStatus(to: connection)
+        } else if method == "GET", path == "/api/v1/cursor" {
+            sendCursorPosition(to: connection)
         } else if path.hasPrefix("/display/"), !path.hasSuffix(".mjpeg") {
             let rawID = path.replacingOccurrences(of: "/display/", with: "")
             guard let id = CGDirectDisplayID(rawID), displays.contains(where: { $0.id == id }) else {
@@ -250,7 +258,10 @@ final class FrameStreamingServer {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await onStartRequested(requestedLayout)
+                let usesVirtualCursor = components.queryItems?
+                    .first(where: { $0.name == "cursor" })?
+                    .value == "virtual"
+                try await onStartRequested(requestedLayout, usesVirtualCursor)
                 guard let session = self.makeRemoteSession() else {
                     self.sendAPIError("The stream address is not ready.", status: "503 Service Unavailable", to: connection)
                     return
@@ -296,7 +307,7 @@ final class FrameStreamingServer {
         <!doctype html>
         <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
         <title>ExtendReality Mac</title>
-        <style>html,body{margin:0;background:#090b10;color:white;font:15px system-ui;height:100%}body{display:grid;place-items:center}img{max-width:100%;max-height:100%;object-fit:contain}</style>
+        <style>html,body{margin:0;background:#090b10;color:white;font:15px system-ui;width:100%;height:100%;overflow:hidden}img{display:block;width:100%;height:100%;object-fit:cover}</style>
         <img src="\(streamPath)" alt="ExtendReality display stream">
         """
         sendResponse(status: "200 OK", contentType: "text/html; charset=utf-8", body: Data(html.utf8), to: connection)
@@ -328,8 +339,26 @@ final class FrameStreamingServer {
             "ready": publicAddress != nil,
             "streaming": !latestFrames.isEmpty || latestComposite != nil,
             "viewers": clients.count,
+            "virtualCursor": usesVirtualCursor,
         ]
         let body = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])) ?? Data("{}".utf8)
+        sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
+    }
+
+    private func sendCursorPosition(to connection: NWConnection) {
+        let cursor = CGEvent(source: nil)?.location
+        let bounds = Dictionary(uniqueKeysWithValues: displays.map { display in
+            (display.id, CGDisplayBounds(display.id))
+        })
+        let position = cursor.map {
+            CursorStreamGeometry.position(
+                cursor: $0,
+                layout: layout,
+                displays: displays,
+                displayBounds: bounds
+            )
+        } ?? .hidden
+        let body = (try? JSONEncoder().encode(position)) ?? Data()
         sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
     }
 
@@ -338,24 +367,38 @@ final class FrameStreamingServer {
         let endpoints: [RemoteStreamEndpoint]
         if layout == .multiple {
             endpoints = displays.map { display in
-                RemoteStreamEndpoint(
+                let size = StreamGeometry.captureSize(width: display.width, height: display.height)
+                return RemoteStreamEndpoint(
                     id: String(display.id),
                     name: display.name,
                     url: publicAddress
                         .appendingPathComponent("display")
-                        .appendingPathComponent(String(display.id))
+                        .appendingPathComponent(String(display.id)),
+                    width: Int(size.width),
+                    height: Int(size.height)
                 )
             }
         } else {
+            let size = StreamGeometry.primarySize(layout: layout, displays: displays)
             endpoints = [
                 RemoteStreamEndpoint(
                     id: "primary",
                     name: layout == .ultrawide ? "Mac Ultrawide" : (displays.first?.name ?? "Mac"),
-                    url: publicAddress
+                    url: publicAddress,
+                    width: Int(size.width),
+                    height: Int(size.height)
                 )
             ]
         }
-        return RemoteStreamSession(version: 1, layout: layout, streams: endpoints)
+        return RemoteStreamSession(
+            version: 1,
+            layout: layout,
+            streams: endpoints,
+            cursorURL: publicAddress
+                .appendingPathComponent("api")
+                .appendingPathComponent("v1")
+                .appendingPathComponent("cursor")
+        )
     }
 
     private func sendAPIError(_ message: String, status: String, to connection: NWConnection) {
@@ -378,7 +421,7 @@ final class FrameStreamingServer {
         body: Data,
         to connection: NWConnection
     ) {
-        var response = Data("HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
+        var response = Data("HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".utf8)
         response.append(body)
         connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() })
     }

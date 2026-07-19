@@ -7,3 +7,5 @@ pwa-apps/node_modules/
 pwa-apps/dist/
 pwa-apps/spatial-board/dist/
 pwa-apps/pwa-lab/dist/
+pwa-apps/spatial-video/dist/
+pwa-apps/spatial-video/dev-dist/

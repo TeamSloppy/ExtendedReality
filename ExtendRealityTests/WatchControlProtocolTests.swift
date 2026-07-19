@@ -7,6 +7,12 @@ final class WatchControlProtocolTests: XCTestCase {
         XCTAssertEqual(WatchControlCommand(dictionary: expected.dictionary), expected)
     }
 
+    func testVoiceAssistantCommandRoundTrip() {
+        let expected = WatchControlCommand.toggleVoiceAssistant
+        XCTAssertEqual(WatchControlCommand(dictionary: expected.dictionary), expected)
+        XCTAssertEqual(expected.dictionary["command"] as? String, "toggleVoiceAssistant")
+    }
+
     func testWorkspaceSnapshotRoundTrip() {
         let window = WatchWindowSummary(
             id: UUID(),
