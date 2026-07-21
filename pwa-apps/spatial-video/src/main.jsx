@@ -17,11 +17,14 @@ import {
   Library,
   ListPlus,
   LoaderCircle,
+  LogIn,
+  LogOut,
   MonitorPlay,
   Pause,
   Play,
   PlaySquare,
   Plus,
+  RefreshCw,
   RotateCcw,
   RotateCw,
   Search,
@@ -29,6 +32,7 @@ import {
   Square,
   Trash2,
   Upload,
+  Users,
   Wifi,
   X,
 } from 'lucide-react'
@@ -44,7 +48,18 @@ import {
   setSetting,
 } from './storage.js'
 import { CHANNEL_NAME, createSpatialLayout, isSpatialMessage, spatialMessage } from './spatial.js'
-import { loadYouTubeIframeAPI, lookupYouTubeVideo, searchYouTube, youtubeFallbackItem } from './youtube.js'
+import {
+  fetchSubscriptionFeed,
+  loadYouTubeIframeAPI,
+  lookupYouTubeVideo,
+  searchYouTube,
+  youtubeFallbackItem,
+} from './youtube.js'
+import {
+  isGoogleWebClientID,
+  requestYouTubeAccessToken,
+  revokeYouTubeAccessToken,
+} from './youtube-auth.js'
 
 const params = new URLSearchParams(window.location.search)
 const panel = params.get('panel') ?? 'primary'
@@ -65,10 +80,13 @@ const emptySharedState = {
   current: null,
   playback: emptyPlayback,
   results: [],
+  subscriptions: [],
   queue: [],
   offline: [],
   query: '',
   searchStatus: '',
+  subscriptionStatus: '',
+  youtubeConnected: false,
   online: navigator.onLine,
 }
 
@@ -180,7 +198,8 @@ function YouTubePlayer({ item, controllerRef, onPlayback }) {
           onStateChange: (event) => onPlayback((previous) => ({
             ...previous,
             ready: true,
-            playing: event.data === YT.PlayerState.PLAYING,
+            playing: event.data === YT.PlayerState.PLAYING
+              || (event.data === YT.PlayerState.BUFFERING && previous.playing),
             buffering: event.data === YT.PlayerState.BUFFERING,
             currentTime: Number(player.getCurrentTime()) || previous.currentTime,
             duration: Number(player.getDuration()) || previous.duration,
@@ -373,12 +392,13 @@ function QueuePanel({ state, onCommand }) {
         <div><span className="eyebrow"><Library aria-hidden="true" /> Library</span><h2>Find your next video</h2></div>
         <button className="icon-button" type="button" aria-label="Open settings" onClick={() => onCommand({ type: 'open-settings' })}><Settings aria-hidden="true" /></button>
       </div>
-      <div className="segmented" role="tablist" aria-label="Video source">
+      <div className="segmented source-tabs" role="tablist" aria-label="Video source">
         <button role="tab" aria-selected={tab === 'online'} className={tab === 'online' ? 'active' : ''} onClick={() => setTab('online')}><PlaySquare aria-hidden="true" /> Online</button>
+        <button role="tab" aria-selected={tab === 'subscriptions'} className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}><Users aria-hidden="true" /> Subscriptions</button>
         <button role="tab" aria-selected={tab === 'offline'} className={tab === 'offline' ? 'active' : ''} onClick={() => setTab('offline')}><HardDrive aria-hidden="true" /> Offline <span>{state.offline.length}</span></button>
       </div>
 
-      {tab === 'online' ? (
+      {tab === 'online' && (
         <>
           <form className="search-form" onSubmit={submit}>
             <label className="sr-only" htmlFor="video-search">Search YouTube or paste a video link</label>
@@ -406,7 +426,49 @@ function QueuePanel({ state, onCommand }) {
             )}
           </div>
         </>
-      ) : (
+      )}
+
+      {tab === 'subscriptions' && (
+        <>
+          <div className="subscription-toolbar">
+            <div>
+              <strong>{state.youtubeConnected ? 'Latest from your channels' : 'Connect your Google account'}</strong>
+              <small>{state.youtubeConnected ? 'A recent-upload feed, sorted newest first.' : 'Read-only access to your YouTube subscriptions.'}</small>
+            </div>
+            <button
+              type="button"
+              className="queue-button"
+              aria-label={state.youtubeConnected ? 'Refresh subscriptions' : 'Open Google connection settings'}
+              onClick={() => onCommand({ type: state.youtubeConnected ? 'refresh-subscriptions' : 'open-settings' })}
+            >
+              {state.youtubeConnected ? <RefreshCw aria-hidden="true" /> : <LogIn aria-hidden="true" />}
+            </button>
+          </div>
+          <p className={state.subscriptionStatus.startsWith('Error:') ? 'inline-status error' : 'inline-status'} aria-live="polite">
+            {state.subscriptionStatus || (state.youtubeConnected ? 'Refresh to load recent uploads.' : 'Your access token is kept in memory only.')}
+          </p>
+          <div className="result-list">
+            {state.subscriptions.map((item) => (
+              <ResultCard
+                key={item.videoId}
+                item={item}
+                queued={state.queue.some((entry) => entry.videoId === item.videoId)}
+                onPlay={() => onCommand({ type: 'load-youtube', item })}
+                onQueue={() => onCommand({ type: 'enqueue', item })}
+              />
+            ))}
+            {!state.subscriptions.length && (
+              <div className="empty-list">
+                <Users aria-hidden="true" />
+                <strong>{state.youtubeConnected ? 'No recent uploads found' : 'Subscriptions need Google access'}</strong>
+                <span>{state.youtubeConnected ? 'Try refreshing again later.' : 'Add a Web client ID and connect in Settings.'}</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === 'offline' && (
         <>
           <button className="add-offline" type="button" onClick={() => onCommand({ type: 'open-import' })}><Download aria-hidden="true" /><span><strong>Add for offline</strong><small>MP4, WebM, MOV or M4V</small></span><ChevronRight aria-hidden="true" /></button>
           <div className="result-list offline-list">
@@ -492,14 +554,47 @@ function ModalFrame({ title, description, onClose, children }) {
   )
 }
 
-function SettingsModal({ initialKey, onSave, onClose }) {
+function SettingsModal({ initialKey, initialClientID, authSession, authBusy, authError, onConnect, onDisconnect, onSave, onClose }) {
   const [key, setKey] = useState(initialKey)
+  const [clientID, setClientID] = useState(initialClientID)
+  const clientIDValid = !clientID.trim() || isGoogleWebClientID(clientID)
   return (
-    <ModalFrame title="Online video settings" description="The key stays inside Spatial Video's private IndexedDB store." onClose={onClose}>
+    <ModalFrame title="Online video settings" description="API credentials stay inside Spatial Video. Google access tokens are kept in memory only." onClose={onClose}>
       <label className="field-label" htmlFor="youtube-api-key">YouTube Data API key</label>
       <input className="modal-input" id="youtube-api-key" type="password" value={key} onChange={(event) => setKey(event.target.value)} autoComplete="off" placeholder="Paste a browser-restricted key" />
       <div className="privacy-note"><Gauge aria-hidden="true" /><p>Restrict the key to the deployed HTTPS origin. Direct URL playback works without a key.</p></div>
-      <footer className="modal-actions"><button type="button" className="secondary-button" onClick={() => setKey('')}>Clear</button><button type="button" className="primary-button" onClick={() => onSave(key.trim())}>Save settings</button></footer>
+      <div className="settings-divider" />
+      <label className="field-label" htmlFor="google-client-id">Google OAuth Web client ID</label>
+      <input
+        className="modal-input"
+        id="google-client-id"
+        type="text"
+        value={clientID}
+        aria-invalid={!clientIDValid}
+        onChange={(event) => setClientID(event.target.value)}
+        autoComplete="off"
+        placeholder="123456789-example.apps.googleusercontent.com"
+      />
+      {!clientIDValid && <p className="field-error">Enter a Google OAuth Web client ID ending in apps.googleusercontent.com.</p>}
+      <div className="oauth-card">
+        <div className={authSession ? 'oauth-status connected' : 'oauth-status'}>
+          <span>{authSession ? <Check aria-hidden="true" /> : <Users aria-hidden="true" />}</span>
+          <div><strong>{authSession ? 'Google connected' : 'Subscriptions disconnected'}</strong><small>Requests only YouTube read-only access.</small></div>
+        </div>
+        {authSession ? (
+          <button type="button" className="secondary-button" disabled={authBusy} onClick={onDisconnect}><LogOut aria-hidden="true" /> Disconnect</button>
+        ) : (
+          <button type="button" className="primary-button" disabled={authBusy || !isGoogleWebClientID(clientID)} onClick={() => onConnect({ clientID: clientID.trim(), apiKey: key.trim() })}>
+            {authBusy ? <LoaderCircle className="spin" aria-hidden="true" /> : <LogIn aria-hidden="true" />} Connect Google
+          </button>
+        )}
+      </div>
+      {authError && <p className="modal-error" role="alert"><AlertCircle aria-hidden="true" />{authError}</p>}
+      <div className="privacy-note"><Info aria-hidden="true" /><p>This is a latest-uploads feed from subscribed channels. The YouTube Data API does not expose the personalized Home recommendations feed.</p></div>
+      <footer className="modal-actions">
+        <button type="button" className="secondary-button" onClick={() => { setKey(''); setClientID('') }}>Clear fields</button>
+        <button type="button" className="primary-button" disabled={!clientIDValid} onClick={() => onSave({ apiKey: key.trim(), clientID: clientID.trim() })}>Save settings</button>
+      </footer>
     </ModalFrame>
   )
 }
@@ -556,13 +651,13 @@ function ImportModal({ onImported, onClose }) {
   )
 }
 
-function BrowserLayout({ state, controllerRef, onPlayback, onCommand }) {
+function BrowserLayout({ state, controllerRef, onPlayback, onCommand, playerOnly = false }) {
   return (
-    <main className="app-shell">
-      <InfoPanel state={state} />
+    <main className={playerOnly ? 'single-panel-shell' : 'app-shell'}>
       <PlayerPanel state={state} controllerRef={controllerRef} onPlayback={onPlayback} onCommand={onCommand} />
-      <QueuePanel state={state} onCommand={onCommand} />
-      <TransportPanel state={state} onCommand={onCommand} />
+      {!playerOnly && <InfoPanel state={state} />}
+      {!playerOnly && <QueuePanel state={state} onCommand={onCommand} />}
+      {!playerOnly && <TransportPanel state={state} onCommand={onCommand} />}
     </main>
   )
 }
@@ -571,30 +666,53 @@ function PrimaryApp() {
   const [current, setCurrent] = useState(null)
   const [playback, setPlayback] = useState(emptyPlayback)
   const [results, setResults] = useState([])
+  const [subscriptions, setSubscriptions] = useState([])
   const [queue, setQueue] = useState([])
   const [offline, setOffline] = useState([])
   const [query, setQuery] = useState('')
   const [searchStatus, setSearchStatus] = useState('')
+  const [subscriptionStatus, setSubscriptionStatus] = useState('')
   const [online, setOnline] = useState(navigator.onLine)
   const [apiKey, setAPIKey] = useState('')
+  const [googleClientID, setGoogleClientID] = useState('')
+  const [authSession, setAuthSession] = useState(null)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authError, setAuthError] = useState('')
   const [modal, setModal] = useState(null)
   const [spatialActive, setSpatialActive] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const playerController = useRef(null)
   const searchController = useRef(null)
+  const subscriptionController = useRef(null)
+  const layoutRequest = useRef(0)
 
-  const sharedState = useMemo(() => ({ current, playback, results, queue, offline, query, searchStatus, online }), [current, playback, results, queue, offline, query, searchStatus, online])
+  const youtubeConnected = Boolean(authSession?.accessToken && authSession.expiresAt > Date.now())
+  const sharedState = useMemo(() => ({
+    current,
+    playback,
+    results,
+    subscriptions,
+    queue,
+    offline,
+    query,
+    searchStatus,
+    subscriptionStatus,
+    youtubeConnected,
+    online,
+  }), [current, playback, results, subscriptions, queue, offline, query, searchStatus, subscriptionStatus, youtubeConnected, online])
   const sharedRef = useRef(sharedState)
   sharedRef.current = sharedState
 
   useEffect(() => {
     Promise.all([
       getSetting('youtubeApiKey', ''),
+      getSetting('googleOAuthClientID', ''),
       getSetting('queue', []),
       getSetting('current', null),
       cleanupOfflineStorage(),
-    ]).then(([storedKey, storedQueue, storedCurrent, storedOffline]) => {
+    ]).then(([storedKey, storedClientID, storedQueue, storedCurrent, storedOffline]) => {
       setAPIKey(storedKey)
+      setGoogleClientID(storedClientID)
       setQueue(Array.isArray(storedQueue) ? storedQueue : [])
       if (storedCurrent?.kind === 'offline') {
         const existing = storedOffline.find((item) => item.id === storedCurrent.id)
@@ -609,6 +727,21 @@ function PrimaryApp() {
       setHydrated(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (!authSession?.expiresAt) return
+    const remaining = authSession.expiresAt - Date.now()
+    if (remaining <= 0) {
+      setAuthSession(null)
+      setSubscriptionStatus('Google session expired. Connect again to refresh subscriptions.')
+      return
+    }
+    const timer = window.setTimeout(() => {
+      setAuthSession(null)
+      setSubscriptionStatus('Google session expired. Connect again to refresh subscriptions.')
+    }, remaining)
+    return () => window.clearTimeout(timer)
+  }, [authSession])
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine)
@@ -628,11 +761,22 @@ function PrimaryApp() {
 
   useEffect(() => {
     if (displayMode === 'widget' || !window.extendReality?.windows) return
-    window.extendReality.windows.setLayout(createSpatialLayout(window.location.href, displayMode))
-      .then(() => setSpatialActive(true))
-      .catch(() => setSpatialActive(false))
     return () => { window.extendReality?.windows?.reset?.().catch?.(() => {}) }
   }, [])
+
+  useEffect(() => {
+    if (displayMode === 'widget' || !window.extendReality?.windows) return
+    const request = ++layoutRequest.current
+    const includesPlaybackPanels = playback.playing
+    window.extendReality.windows
+      .setLayout(createSpatialLayout(window.location.href, displayMode, includesPlaybackPanels))
+      .then(() => {
+        if (request === layoutRequest.current) setSpatialActive(includesPlaybackPanels)
+      })
+      .catch(() => {
+        if (request === layoutRequest.current) setSpatialActive(false)
+      })
+  }, [playback.playing])
 
   const loadYouTube = useCallback((item) => {
     setCurrent({ ...item, kind: 'youtube' })
@@ -666,6 +810,31 @@ function PrimaryApp() {
     }
   }, [apiKey, loadYouTube])
 
+  const refreshSubscriptions = useCallback(async (session = authSession) => {
+    if (!session?.accessToken || session.expiresAt <= Date.now()) {
+      setAuthSession(null)
+      setSubscriptionStatus('Error: Connect your Google account in settings.')
+      return
+    }
+    if (!navigator.onLine) {
+      setSubscriptionStatus('Error: Reconnect to refresh subscriptions.')
+      return
+    }
+    subscriptionController.current?.abort()
+    const controller = new AbortController()
+    subscriptionController.current = controller
+    setSubscriptionStatus('Loading subscriptions…')
+    try {
+      const found = await fetchSubscriptionFeed(session.accessToken, controller.signal)
+      setSubscriptions(found)
+      setSubscriptionStatus(found.length ? `${found.length} recent uploads from your subscriptions.` : 'No recent uploads found.')
+    } catch (error) {
+      if (error.name === 'AbortError') return
+      if (error.status === 401) setAuthSession(null)
+      setSubscriptionStatus(`Error: ${error.status === 401 ? 'Google session expired. Connect again.' : error.message}`)
+    }
+  }, [authSession])
+
   const playerAction = useCallback((command) => {
     const controller = playerController.current
     if (!controller) return
@@ -679,6 +848,7 @@ function PrimaryApp() {
   const handleCommand = useCallback((command) => {
     if (!command?.type) return
     if (command.type === 'search') handleSearch(command.query)
+    else if (command.type === 'refresh-subscriptions') refreshSubscriptions()
     else if (command.type === 'load-youtube') loadYouTube(command.item)
     else if (command.type === 'enqueue') setQueue((items) => items.some((item) => item.videoId === command.item.videoId) ? items : [...items, command.item])
     else if (command.type === 'load-offline') { setCurrent({ ...command.item, kind: 'offline' }); setPlayback(emptyPlayback) }
@@ -690,15 +860,49 @@ function PrimaryApp() {
     } else if (command.type === 'open-settings') setModal('settings')
     else if (command.type === 'open-import') setModal('import')
     else playerAction(command)
-  }, [handleSearch, loadYouTube, playerAction])
+  }, [handleSearch, loadYouTube, playerAction, refreshSubscriptions])
 
   useSpatialBus({ primary: true, sharedState, onCommand: handleCommand })
 
-  const saveAPIKey = async (value) => {
-    await setSetting('youtubeApiKey', value)
-    setAPIKey(value)
+  const saveSettings = async ({ apiKey: nextAPIKey, clientID }) => {
+    await Promise.all([
+      setSetting('youtubeApiKey', nextAPIKey),
+      setSetting('googleOAuthClientID', clientID),
+    ])
+    setAPIKey(nextAPIKey)
+    setGoogleClientID(clientID)
     setModal(null)
-    setSearchStatus(value ? 'API key saved locally.' : 'API key cleared. URL-only mode is active.')
+    setSearchStatus(nextAPIKey ? 'API key saved locally.' : 'API key cleared. URL-only mode is active.')
+  }
+
+  const connectGoogle = async ({ clientID, apiKey: nextAPIKey }) => {
+    setAuthBusy(true)
+    setAuthError('')
+    try {
+      await Promise.all([
+        setSetting('youtubeApiKey', nextAPIKey),
+        setSetting('googleOAuthClientID', clientID),
+      ])
+      setAPIKey(nextAPIKey)
+      setGoogleClientID(clientID)
+      const session = await requestYouTubeAccessToken(clientID)
+      setAuthSession(session)
+      setSubscriptionStatus('Google connected. Loading subscriptions…')
+      await refreshSubscriptions(session)
+    } catch (error) {
+      setAuthError(error.message)
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const disconnectGoogle = async () => {
+    const accessToken = authSession?.accessToken
+    setAuthSession(null)
+    setSubscriptions([])
+    setSubscriptionStatus('Google disconnected. Access token removed from memory.')
+    setAuthError('')
+    if (accessToken) revokeYouTubeAccessToken(accessToken).catch(() => {})
   }
 
   const imported = async (record) => {
@@ -712,10 +916,26 @@ function PrimaryApp() {
 
   return (
     <>
-      {spatialActive
-        ? <main className="single-panel-shell"><PlayerPanel state={sharedState} controllerRef={playerController} onPlayback={setPlayback} onCommand={handleCommand} /></main>
-        : <BrowserLayout state={sharedState} controllerRef={playerController} onPlayback={setPlayback} onCommand={handleCommand} />}
-      {modal === 'settings' && <SettingsModal initialKey={apiKey} onSave={saveAPIKey} onClose={() => setModal(null)} />}
+      <BrowserLayout
+        state={sharedState}
+        controllerRef={playerController}
+        onPlayback={setPlayback}
+        onCommand={handleCommand}
+        playerOnly={spatialActive}
+      />
+      {modal === 'settings' && (
+        <SettingsModal
+          initialKey={apiKey}
+          initialClientID={googleClientID}
+          authSession={authSession}
+          authBusy={authBusy}
+          authError={authError}
+          onConnect={connectGoogle}
+          onDisconnect={disconnectGoogle}
+          onSave={saveSettings}
+          onClose={() => setModal(null)}
+        />
+      )}
       {modal === 'import' && <ImportModal onImported={imported} onClose={() => setModal(null)} />}
     </>
   )

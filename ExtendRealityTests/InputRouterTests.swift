@@ -4,6 +4,36 @@ import XCTest
 
 @MainActor
 final class InputRouterTests: XCTestCase {
+    func testScrollMomentumDeceleratesAndPreservesDirection() {
+        var momentum = ScrollMomentum(velocity: CGPoint(x: 600, y: -1_200))
+
+        let firstDelta = momentum.consumeFrame(duration: 1.0 / 60.0)
+        let firstVelocity = momentum.velocity
+        let secondDelta = momentum.consumeFrame(duration: 1.0 / 60.0)
+
+        guard let firstDelta, let secondDelta else {
+            XCTFail("Expected momentum to remain active")
+            return
+        }
+        XCTAssertGreaterThan(firstDelta.x, 0)
+        XCTAssertLessThan(firstDelta.y, 0)
+        XCTAssertLessThan(abs(momentum.velocity.dy), abs(firstVelocity.dy))
+        XCTAssertLessThan(abs(secondDelta.y), abs(firstDelta.y))
+    }
+
+    func testScrollMomentumStopsBelowMinimumVelocity() {
+        var momentum = ScrollMomentum(velocity: CGPoint(x: 0, y: 10))
+
+        XCTAssertFalse(momentum.isActive)
+        XCTAssertNil(momentum.consumeFrame(duration: 1.0 / 60.0))
+    }
+
+    func testScrollMomentumClampsExtremeFlickVelocity() {
+        let momentum = ScrollMomentum(velocity: CGPoint(x: 0, y: 20_000))
+
+        XCTAssertEqual(hypot(momentum.velocity.dx, momentum.velocity.dy), 6_000, accuracy: 0.001)
+    }
+
     func testHardwareMouseMappingUsesScreenCoordinates() {
         XCTAssertEqual(
             HardwareMouseMapping.pointerDelta(x: 72, y: 36),
@@ -72,6 +102,15 @@ final class InputRouterTests: XCTestCase {
         router.back(in: id)
 
         XCTAssertEqual(target.commands, [.insertText("hello"), .back])
+    }
+
+    func testTextInputFocusRequestsAreObservable() {
+        let router = InputRouter()
+        let initialRequest = router.textInputFocusRequest
+
+        router.requestTextInputFocus()
+
+        XCTAssertNotEqual(router.textInputFocusRequest, initialRequest)
     }
 
     func testPointerCoordinatesAreMappedIntoWindowSurface() {
@@ -187,12 +226,34 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(receivedAction, .dashboard)
     }
 
-    func testDockConsumesClickAndSelectsWindow() {
+    func testVoiceAssistantDismissControlConsumesCursorClick() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let windowID = UUID()
+        var dismissCount = 0
+        let canvasSize = CGSize(width: 1_000, height: 1_000)
+        router.register(target, for: windowID)
+        router.updateWindowLayout(WindowChromeLayout(size: canvasSize), for: windowID)
+        router.updateVoiceAssistantDismissHitFrame(
+            CGRect(x: 400, y: 300, width: 100, height: 100),
+            in: canvasSize
+        )
+        router.voiceAssistantDismissHandler = { dismissCount += 1 }
+
+        router.movePointer(to: CGPoint(x: 0.45, y: 0.35), in: windowID)
+        router.pointerDown(in: windowID)
+        router.pointerUp(in: windowID)
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertTrue(target.commands.isEmpty)
+    }
+
+    func testDockConsumesClickAndLaunchesItem() {
         let router = InputRouter()
         let activeWindowID = UUID()
-        let dockWindowID = UUID()
+        let dockItemID = UUID()
         let target = InputTargetSpy()
-        var selectedWindowID: UUID?
+        var receivedDockAction: DockAction?
         var receivedStatusAction: StatusBarAction?
         let hitFrame = CGRect(x: 400, y: 800, width: 200, height: 120)
         let canvasSize = CGSize(width: 1_000, height: 1_000)
@@ -202,18 +263,35 @@ final class InputRouterTests: XCTestCase {
             for: activeWindowID
         )
         router.updateStatusBarHitFrames([.dashboard: hitFrame], in: canvasSize)
-        router.updateDockHitFrames([dockWindowID: hitFrame], in: canvasSize)
+        router.updateDockHitFrames([.launch(dockItemID): hitFrame], in: canvasSize)
         router.statusBarActionHandler = { receivedStatusAction = $0 }
-        router.dockActionHandler = { selectedWindowID = $0 }
+        router.dockActionHandler = { receivedDockAction = $0 }
 
         router.movePointer(to: CGPoint(x: 0.5, y: 0.85), in: activeWindowID)
         target.commands.removeAll()
         router.pointerDown(in: activeWindowID)
         router.pointerUp(in: activeWindowID)
 
-        XCTAssertEqual(selectedWindowID, dockWindowID)
+        XCTAssertEqual(receivedDockAction, .launch(dockItemID))
         XCTAssertNil(receivedStatusAction)
         XCTAssertTrue(target.commands.isEmpty)
+    }
+
+    func testDockBackActionCanBeClicked() {
+        let router = InputRouter()
+        var receivedDockAction: DockAction?
+        let canvasSize = CGSize(width: 1_000, height: 1_000)
+        router.updateDockHitFrames(
+            [.dismiss: CGRect(x: 100, y: 800, width: 120, height: 120)],
+            in: canvasSize
+        )
+        router.dockActionHandler = { receivedDockAction = $0 }
+
+        router.movePointer(to: CGPoint(x: 0.16, y: 0.85), in: nil)
+        router.pointerDown(in: nil)
+        router.pointerUp(in: nil)
+
+        XCTAssertEqual(receivedDockAction, .dismiss)
     }
 
     func testChromeButtonRunsActionWithoutClickingSurface() {
@@ -293,6 +371,39 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(receivedActions, [.toggleOrientation, .toggleExpanded])
     }
 
+    func testAttachmentButtonRunsChromeAction() {
+        let router = InputRouter()
+        let id = UUID()
+        var receivedAction: WindowChromeAction?
+        router.updateWindowLayout(
+            WindowChromeLayout(size: CGSize(width: 1_000, height: 500)),
+            for: id
+        )
+        router.chromeActionHandler = { _, action in receivedAction = action }
+
+        router.movePointer(to: CGPoint(x: 0.36, y: 0.05), in: id)
+        router.pointerDown(in: id)
+        router.pointerUp(in: id)
+
+        XCTAssertEqual(receivedAction, .toggleAttachment)
+    }
+
+    func testWorkspaceLayoutStatusActionCanBeClicked() {
+        let router = InputRouter()
+        var receivedAction: StatusBarAction?
+        router.updateStatusBarHitFrames(
+            [.toggleWorkspaceLayout: CGRect(x: 300, y: 20, width: 100, height: 80)],
+            in: CGSize(width: 1_000, height: 1_000)
+        )
+        router.statusBarActionHandler = { receivedAction = $0 }
+
+        router.movePointer(to: CGPoint(x: 0.35, y: 0.05), in: nil)
+        router.pointerDown(in: nil)
+        router.pointerUp(in: nil)
+
+        XCTAssertEqual(receivedAction, .toggleWorkspaceLayout)
+    }
+
     func testDashboardClickRunsActionWhenThereIsNoActiveWindow() {
         let router = InputRouter()
         let itemID = UUID()
@@ -326,6 +437,30 @@ final class InputRouterTests: XCTestCase {
         router.pointerUp(in: nil)
 
         XCTAssertNil(receivedItemID)
+    }
+
+    func testDashboardHitTestingSelectsTopmostOverlappingItem() {
+        let router = InputRouter()
+        let backID = UUID()
+        let frontID = UUID()
+        router.setDashboardPresented(true)
+        router.updateDashboardLayouts([
+            backID: DashboardItemInputLayout(
+                center: CGPoint(x: 0.5, y: 0.5),
+                size: CGSize(width: 0.4, height: 0.4),
+                rotationRadians: 0,
+                zIndex: 1
+            ),
+            frontID: DashboardItemInputLayout(
+                center: CGPoint(x: 0.5, y: 0.5),
+                size: CGSize(width: 0.4, height: 0.4),
+                rotationRadians: .pi / 4,
+                zIndex: 8
+            ),
+        ])
+
+        XCTAssertEqual(router.dashboardItem(at: CGPoint(x: 0.5, y: 0.5)), frontID)
+        XCTAssertNil(router.dashboardItem(at: CGPoint(x: 0.9, y: 0.9)))
     }
 
     func testAppSwitcherConsumesInputAndSelectsWindow() {

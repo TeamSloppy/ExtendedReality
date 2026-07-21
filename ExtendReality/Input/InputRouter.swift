@@ -6,6 +6,7 @@ enum WindowChromeRegion: Equatable {
     case outside
     case surface
     case orientationButton
+    case attachmentButton
     case minimizeButton
     case expandButton
     case closeButton
@@ -15,6 +16,7 @@ enum WindowChromeRegion: Equatable {
 
 enum WindowChromeAction: Equatable {
     case toggleOrientation
+    case toggleAttachment
     case minimize
     case toggleExpanded
     case close
@@ -65,19 +67,21 @@ struct WindowChromeLayout: Equatable {
             return .surface
         }
         if controlBarRect.contains(point) {
-            let controlCount: CGFloat = showsOrientation ? 4 : 3
+            let controlCount: CGFloat = showsOrientation ? 5 : 4
             let index = Int((point.x - controlBarRect.minX) / max(controlBarRect.width / controlCount, 1))
             if showsOrientation {
                 switch index {
                 case 0: return .orientationButton
-                case 1: return .minimizeButton
-                case 2: return .expandButton
+                case 1: return .attachmentButton
+                case 2: return .minimizeButton
+                case 3: return .expandButton
                 default: return .closeButton
                 }
             } else {
                 switch index {
-                case 0: return .minimizeButton
-                case 1: return .expandButton
+                case 0: return .attachmentButton
+                case 1: return .minimizeButton
+                case 2: return .expandButton
                 default: return .closeButton
                 }
             }
@@ -219,17 +223,41 @@ struct SpatialPanelInputLayout: Equatable {
     }
 }
 
+struct DashboardItemInputLayout: Equatable, Sendable {
+    let center: CGPoint
+    let size: CGSize
+    let rotationRadians: Double
+    let zIndex: Int
+
+    func contains(_ normalizedPosition: CGPoint) -> Bool {
+        let localPoint = normalizedPosition.rotated(around: center, by: -rotationRadians)
+        return CGRect(
+            x: center.x - size.width / 2,
+            y: center.y - size.height / 2,
+            width: size.width,
+            height: size.height
+        ).contains(localPoint)
+    }
+}
+
 enum StatusBarAction: Hashable {
     case dashboard
     case pointerMode
     case arrangeMode
+    case toggleWorkspaceLayout
     case recenter
 }
 
+enum DockAction: Hashable {
+    case dismiss
+    case launch(UUID)
+}
+
 enum PointerHoverTarget: Equatable {
+    case voiceAssistantDismiss
     case statusBar(StatusBarAction)
     case dashboard(UUID)
-    case dock(UUID)
+    case dock(DockAction)
     case appSwitcher(UUID)
     case windowChrome(UUID, WindowChromeRegion)
     case panel(SpatialPanelSurfaceID)
@@ -276,6 +304,7 @@ final class InputRouter {
 
     private(set) var cursor = CGPoint(x: 0.5, y: 0.5)
     private(set) var isCursorVisible = true
+    private(set) var textInputFocusRequest = UUID()
     @ObservationIgnored private let cursorInactivityDuration: Duration
     @ObservationIgnored private var cursorInactivityTask: Task<Void, Never>?
     @ObservationIgnored private var hoveredTarget: PointerHoverTarget?
@@ -287,20 +316,24 @@ final class InputRouter {
     @ObservationIgnored private var windowLayouts: [UUID: RegisteredWindowLayout] = [:]
     @ObservationIgnored private var pressedRegions: [UUID: WindowChromeRegion] = [:]
     @ObservationIgnored private var pressedWindowID: UUID?
-    @ObservationIgnored private var dashboardHitFrames: [UUID: CGRect] = [:]
+    @ObservationIgnored private var dashboardLayouts: [UUID: DashboardItemInputLayout] = [:]
     @ObservationIgnored private var pressedDashboardItemID: UUID?
+    @ObservationIgnored private var isDashboardPresented = false
+    @ObservationIgnored private var voiceAssistantDismissHitFrame: CGRect?
+    @ObservationIgnored private var isVoiceAssistantDismissPressed = false
     @ObservationIgnored private var statusBarHitFrames: [StatusBarAction: CGRect] = [:]
     @ObservationIgnored private var pressedStatusBarAction: StatusBarAction?
-    @ObservationIgnored private var dockHitFrames: [UUID: CGRect] = [:]
-    @ObservationIgnored private var pressedDockWindowID: UUID?
+    @ObservationIgnored private var dockHitFrames: [DockAction: CGRect] = [:]
+    @ObservationIgnored private var pressedDockAction: DockAction?
     @ObservationIgnored private var appSwitcherHitFrames: [UUID: CGRect] = [:]
     @ObservationIgnored private var pressedAppSwitcherWindowID: UUID?
     @ObservationIgnored private var isAppSwitcherPresented = false
     @ObservationIgnored var chromeActionHandler: ((UUID, WindowChromeAction) -> Void)?
     @ObservationIgnored var dashboardActionHandler: ((UUID) -> Void)?
     @ObservationIgnored var dashboardScrollHandler: ((CGFloat) -> Void)?
+    @ObservationIgnored var voiceAssistantDismissHandler: (() -> Void)?
     @ObservationIgnored var statusBarActionHandler: ((StatusBarAction) -> Void)?
-    @ObservationIgnored var dockActionHandler: ((UUID) -> Void)?
+    @ObservationIgnored var dockActionHandler: ((DockAction) -> Void)?
     @ObservationIgnored var appSwitcherActionHandler: ((UUID) -> Void)?
     @ObservationIgnored var windowFocusHandler: ((UUID) -> Void)?
     @ObservationIgnored var panelFocusHandler: ((UUID, SpatialPanelID) -> Void)?
@@ -394,19 +427,49 @@ final class InputRouter {
     func updateDashboardHitFrames(_ frames: [UUID: CGRect], in canvasSize: CGSize) {
         let width = max(canvasSize.width, 1)
         let height = max(canvasSize.height, 1)
-        dashboardHitFrames = frames.mapValues { frame in
-            CGRect(
-                x: frame.minX / width,
-                y: frame.minY / height,
-                width: frame.width / width,
-                height: frame.height / height
+        dashboardLayouts = frames.mapValues { frame in
+            DashboardItemInputLayout(
+                center: CGPoint(x: frame.midX / width, y: frame.midY / height),
+                size: CGSize(width: frame.width / width, height: frame.height / height),
+                rotationRadians: 0,
+                zIndex: 0
             )
         }
     }
 
+    func updateDashboardLayouts(_ layouts: [UUID: DashboardItemInputLayout]) {
+        dashboardLayouts = layouts
+    }
+
+    func setDashboardPresented(_ isPresented: Bool) {
+        isDashboardPresented = isPresented
+        guard !isPresented else { return }
+        clearDashboardHitFrames()
+    }
+
     func clearDashboardHitFrames() {
-        dashboardHitFrames = [:]
+        dashboardLayouts = [:]
         pressedDashboardItemID = nil
+    }
+
+    func updateVoiceAssistantDismissHitFrame(_ frame: CGRect?, in canvasSize: CGSize) {
+        guard let frame else {
+            clearVoiceAssistantDismissHitFrame()
+            return
+        }
+        let width = max(canvasSize.width, 1)
+        let height = max(canvasSize.height, 1)
+        voiceAssistantDismissHitFrame = CGRect(
+            x: frame.minX / width,
+            y: frame.minY / height,
+            width: frame.width / width,
+            height: frame.height / height
+        )
+    }
+
+    func clearVoiceAssistantDismissHitFrame() {
+        voiceAssistantDismissHitFrame = nil
+        isVoiceAssistantDismissPressed = false
     }
 
     func updateStatusBarHitFrames(_ frames: [StatusBarAction: CGRect], in canvasSize: CGSize) {
@@ -427,7 +490,7 @@ final class InputRouter {
         pressedStatusBarAction = nil
     }
 
-    func updateDockHitFrames(_ frames: [UUID: CGRect], in canvasSize: CGSize) {
+    func updateDockHitFrames(_ frames: [DockAction: CGRect], in canvasSize: CGSize) {
         let width = max(canvasSize.width, 1)
         let height = max(canvasSize.height, 1)
         dockHitFrames = frames.mapValues { frame in
@@ -442,7 +505,7 @@ final class InputRouter {
 
     func clearDockHitFrames() {
         dockHitFrames = [:]
-        pressedDockWindowID = nil
+        pressedDockAction = nil
     }
 
     func setAppSwitcherPresented(_ isPresented: Bool) {
@@ -476,10 +539,13 @@ final class InputRouter {
 
     func dashboardItem(at normalizedPosition: CGPoint? = nil) -> UUID? {
         let point = normalizedPosition ?? cursor
-        return dashboardHitFrames.first(where: { $0.value.contains(point) })?.key
+        return dashboardLayouts
+            .filter { $0.value.contains(point) }
+            .max { lhs, rhs in lhs.value.zIndex < rhs.value.zIndex }?
+            .key
     }
 
-    func dockItem(at normalizedPosition: CGPoint? = nil) -> UUID? {
+    func dockAction(at normalizedPosition: CGPoint? = nil) -> DockAction? {
         let point = normalizedPosition ?? cursor
         return dockHitFrames.first(where: { $0.value.contains(point) })?.key
     }
@@ -487,6 +553,10 @@ final class InputRouter {
     func appSwitcherItem(at normalizedPosition: CGPoint? = nil) -> UUID? {
         let point = normalizedPosition ?? cursor
         return appSwitcherHitFrames.first(where: { $0.value.contains(point) })?.key
+    }
+
+    func isVoiceAssistantDismissControl(at normalizedPosition: CGPoint? = nil) -> Bool {
+        voiceAssistantDismissHitFrame?.contains(normalizedPosition ?? cursor) == true
     }
 
     func isHoveringInteractiveTarget(in windowID: UUID?) -> Bool {
@@ -537,16 +607,24 @@ final class InputRouter {
     }
 
     func pointerDown(in windowID: UUID?) {
+        if isVoiceAssistantDismissControl() {
+            isVoiceAssistantDismissPressed = true
+            return
+        }
         if isAppSwitcherPresented {
             pressedAppSwitcherWindowID = appSwitcherItem()
             return
         }
-        if let dockWindowID = dockItem() {
-            pressedDockWindowID = dockWindowID
+        if let dockAction = dockAction() {
+            pressedDockAction = dockAction
             return
         }
         if let action = statusBarAction() {
             pressedStatusBarAction = action
+            return
+        }
+        if isDashboardPresented {
+            pressedDashboardItemID = dashboardItem()
             return
         }
         guard let targetWindowID = window() ?? windowID else {
@@ -579,6 +657,13 @@ final class InputRouter {
     }
 
     func pointerUp(in windowID: UUID?) {
+        if isVoiceAssistantDismissPressed {
+            isVoiceAssistantDismissPressed = false
+            if isVoiceAssistantDismissControl() {
+                voiceAssistantDismissHandler?()
+            }
+            return
+        }
         if isAppSwitcherPresented {
             let pressedWindowID = pressedAppSwitcherWindowID
             pressedAppSwitcherWindowID = nil
@@ -587,10 +672,10 @@ final class InputRouter {
             }
             return
         }
-        if let pressedDockWindowID {
-            self.pressedDockWindowID = nil
-            if dockItem() == pressedDockWindowID {
-                dockActionHandler?(pressedDockWindowID)
+        if let pressedDockAction {
+            self.pressedDockAction = nil
+            if dockAction() == pressedDockAction {
+                dockActionHandler?(pressedDockAction)
             }
             return
         }
@@ -598,6 +683,14 @@ final class InputRouter {
             self.pressedStatusBarAction = nil
             if statusBarAction() == pressedStatusBarAction {
                 statusBarActionHandler?(pressedStatusBarAction)
+            }
+            return
+        }
+        if isDashboardPresented {
+            let pressedItemID = pressedDashboardItemID
+            pressedDashboardItemID = nil
+            if let pressedItemID, dashboardItem() == pressedItemID {
+                dashboardActionHandler?(pressedItemID)
             }
             return
         }
@@ -623,6 +716,8 @@ final class InputRouter {
                 }
             case .orientationButton where chromeRegion(in: pressedWindowID) == .orientationButton:
                 chromeActionHandler?(pressedWindowID, .toggleOrientation)
+            case .attachmentButton where chromeRegion(in: pressedWindowID) == .attachmentButton:
+                chromeActionHandler?(pressedWindowID, .toggleAttachment)
             case .closeButton where chromeRegion(in: pressedWindowID) == .closeButton:
                 chromeActionHandler?(pressedWindowID, .close)
             case .minimizeButton where chromeRegion(in: pressedWindowID) == .minimizeButton:
@@ -654,6 +749,10 @@ final class InputRouter {
     func insertText(_ text: String, in windowID: UUID?) {
         guard !isAppSwitcherPresented, !text.isEmpty else { return }
         dispatchToActivePanelOrWindow(.insertText(text), windowID: windowID)
+    }
+
+    func requestTextInputFocus() {
+        textInputFocusRequest = UUID()
     }
 
     func back(in windowID: UUID?) {
@@ -689,25 +788,29 @@ final class InputRouter {
     }
 
     private func interactiveTarget(in windowID: UUID?) -> PointerHoverTarget? {
+        if isVoiceAssistantDismissControl() {
+            return .voiceAssistantDismiss
+        }
         if isAppSwitcherPresented {
             return appSwitcherItem().map(PointerHoverTarget.appSwitcher)
         }
-        if let windowID = dockItem() {
-            return .dock(windowID)
+        if let action = dockAction() {
+            return .dock(action)
         }
         if let action = statusBarAction() {
             return .statusBar(action)
         }
-        if windowID == nil, let itemID = dashboardItem() {
+        if isDashboardPresented, let itemID = dashboardItem() {
             return .dashboard(itemID)
         }
+        if isDashboardPresented { return nil }
         guard let windowID else { return nil }
         if let panel = panel(in: windowID) {
             return .panel(panel)
         }
         let region = chromeRegion(in: windowID)
         switch region {
-        case .orientationButton, .minimizeButton, .expandButton, .closeButton, .moveHandle, .resizeHandle:
+        case .orientationButton, .attachmentButton, .minimizeButton, .expandButton, .closeButton, .moveHandle, .resizeHandle:
             return .windowChrome(windowID, region)
         case .outside, .surface:
             return nil
@@ -729,6 +832,11 @@ final class InputRouter {
     }
 
     private func dispatchPointerMove(to windowID: UUID?) {
+        guard !isVoiceAssistantDismissControl(),
+              !isAppSwitcherPresented,
+              dockAction() == nil,
+              statusBarAction() == nil,
+              !isDashboardPresented else { return }
         guard let windowID, chromeRegion(in: windowID) == .surface else { return }
         if let panelID = panel(in: windowID) {
             dispatch(

@@ -3,6 +3,7 @@ import Foundation
 
 enum WindowKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case browser
+    case maps
     case gallery
     case youtube
     case remoteDesktop
@@ -12,6 +13,7 @@ enum WindowKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .browser: "Browser"
+        case .maps: "Maps"
         case .gallery: "Gallery"
         case .youtube: "YouTube"
         case .remoteDesktop: "Mac"
@@ -21,6 +23,7 @@ enum WindowKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .browser: "safari"
+        case .maps: "map.fill"
         case .gallery: "photo.on.rectangle.angled"
         case .youtube: "play.rectangle.fill"
         case .remoteDesktop: "desktopcomputer"
@@ -28,26 +31,35 @@ enum WindowKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum MacCaptureSourceReference: Codable, Equatable, Hashable, Sendable {
+    case display(uuid: UUID)
+    case application(bundleIdentifier: String)
+}
+
 enum WindowSource: Codable, Equatable, Sendable {
     case browser(url: String)
+    case maps
     case pwa(PWAInstallation, displayMode: PWADisplayMode)
     case gallery
     case youtube(videoID: String?)
     case remoteDesktop(host: String?)
+    case macCapture(MacCaptureSourceReference)
 
     var kind: WindowKind {
         switch self {
         case .browser: .browser
+        case .maps: .maps
         case .pwa: .browser
         case .gallery: .gallery
         case .youtube: .youtube
-        case .remoteDesktop: .remoteDesktop
+        case .remoteDesktop, .macCapture: .remoteDesktop
         }
     }
 
     static func initial(for kind: WindowKind) -> WindowSource {
         switch kind {
         case .browser: .browser(url: "https://www.apple.com")
+        case .maps: .maps
         case .gallery: .gallery
         case .youtube: .youtube(videoID: nil)
         case .remoteDesktop: .remoteDesktop(host: nil)
@@ -61,6 +73,83 @@ enum WindowLayoutOrientation: String, Codable, Sendable {
 
     var toggled: Self {
         self == .horizontal ? .vertical : .horizontal
+    }
+}
+
+enum WindowAttachmentMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case anchor
+    case smoothFollow
+    case follow
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .anchor: "Anchor"
+        case .smoothFollow: "Smooth Follow"
+        case .follow: "Follow"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .anchor: "pin.fill"
+        case .smoothFollow: "viewfinder.circle"
+        case .follow: "viewfinder"
+        }
+    }
+
+    var next: Self {
+        switch self {
+        case .anchor: .smoothFollow
+        case .smoothFollow: .follow
+        case .follow: .anchor
+        }
+    }
+
+    var isHeadRelative: Bool {
+        self != .anchor
+    }
+}
+
+enum WorkspaceLayoutMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case freeSpace
+    case stack
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .freeSpace: "Free Space"
+        case .stack: "Stack"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .freeSpace: "move.3d"
+        case .stack: "rectangle.3.group"
+        }
+    }
+}
+
+struct WorkspaceStackTransform: Codable, Equatable, Sendable {
+    var centerYaw: Double
+    var pitch: Double
+    var virtualDistance: Double
+
+    static let centered = WorkspaceStackTransform(
+        centerYaw: 0,
+        pitch: 0,
+        virtualDistance: 1
+    )
+
+    mutating func clamp() {
+        centerYaw = centerYaw.isFinite ? centerYaw : 0
+        pitch = pitch.isFinite ? pitch.clamped(to: -24 ... 24) : 0
+        virtualDistance = virtualDistance.isFinite
+            ? virtualDistance.clamped(to: WindowTransform3DoF.virtualDistanceRange)
+            : 1
     }
 }
 
@@ -269,6 +358,7 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
     var isMinimized: Bool
     var contentAspectRatio: Double?
     var layoutOrientation: WindowLayoutOrientation?
+    var attachmentMode: WindowAttachmentMode
 
     var transform: WindowTransform3DoF {
         get {
@@ -319,7 +409,7 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
 
     private var nominalSinglePanelSize: (width: Double, height: Double) {
         switch source {
-        case .remoteDesktop:
+        case .remoteDesktop, .macCapture:
             (WindowTransform3DoF.macStream.width, WindowTransform3DoF.macStream.height)
         default:
             (WindowTransform3DoF.centered.width, WindowTransform3DoF.centered.height)
@@ -334,14 +424,15 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
         zIndex: Int = 0,
         isMinimized: Bool = false,
         contentAspectRatio: Double? = nil,
-        layoutOrientation: WindowLayoutOrientation? = nil
+        layoutOrientation: WindowLayoutOrientation? = nil,
+        attachmentMode: WindowAttachmentMode = .anchor
     ) {
         self.id = id
         self.title = title
         self.source = source
         let nominalWidth: Double
         switch source {
-        case .remoteDesktop:
+        case .remoteDesktop, .macCapture:
             nominalWidth = WindowTransform3DoF.macStream.width
         default:
             nominalWidth = WindowTransform3DoF.centered.width
@@ -357,6 +448,7 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
         self.isMinimized = isMinimized
         self.contentAspectRatio = contentAspectRatio
         self.layoutOrientation = layoutOrientation
+        self.attachmentMode = attachmentMode
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -369,6 +461,7 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
         case isMinimized
         case contentAspectRatio
         case layoutOrientation
+        case attachmentMode
     }
 
     init(from decoder: any Decoder) throws {
@@ -380,6 +473,10 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
         isMinimized = try container.decode(Bool.self, forKey: .isMinimized)
         contentAspectRatio = try container.decodeIfPresent(Double.self, forKey: .contentAspectRatio)
         layoutOrientation = try container.decodeIfPresent(WindowLayoutOrientation.self, forKey: .layoutOrientation)
+        attachmentMode = try container.decodeIfPresent(
+            WindowAttachmentMode.self,
+            forKey: .attachmentMode
+        ) ?? .anchor
 
         if let decoded = try container.decodeIfPresent(SpatialAppTransform3DoF.self, forKey: .appTransform) {
             appTransform = decoded
@@ -408,6 +505,7 @@ struct WorkspaceWindow: Identifiable, Codable, Equatable, Sendable {
         try container.encode(isMinimized, forKey: .isMinimized)
         try container.encodeIfPresent(contentAspectRatio, forKey: .contentAspectRatio)
         try container.encodeIfPresent(layoutOrientation, forKey: .layoutOrientation)
+        try container.encode(attachmentMode, forKey: .attachmentMode)
     }
 }
 

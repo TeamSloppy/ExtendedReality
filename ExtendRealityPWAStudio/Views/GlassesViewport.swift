@@ -34,6 +34,7 @@ struct GlassesViewport: View {
         let panels = StudioProjection.project(
             layout: model.layout,
             transform: model.windowTransform,
+            camera: model.cameraTransform,
             in: viewport
         )
         let bounds = StudioProjection.boundingFrame(for: panels)
@@ -74,6 +75,11 @@ struct GlassesViewport: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .padding(.top, 18)
                 .padding(.horizontal, 24)
+                .allowsHitTesting(false)
+                .zIndex(2_000)
+
+            cameraControls
+                .position(x: 58, y: size.height - 58)
                 .zIndex(2_000)
 
             Text("Drag the lower handle to move · drag the side handle to scale · ⌘0 to recenter")
@@ -114,7 +120,7 @@ struct GlassesViewport: View {
     }
 
     private func windowControls(bounds: CGRect, viewportSize: CGSize) -> some View {
-        ZStack {
+        Group {
             HStack(spacing: 8) {
                 controlButton("Move", systemImage: "move.3d") {}
                     .accessibilityHint("Drag to move the spatial window")
@@ -191,6 +197,55 @@ struct GlassesViewport: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white.opacity(0.86))
+        .help(title)
+        .accessibilityLabel(title)
+    }
+
+    private var cameraControls: some View {
+        VStack(spacing: 3) {
+            cameraControlButton("Look up", systemImage: "arrow.up") {
+                model.rotateCamera(pitch: 5)
+            }
+
+            HStack(spacing: 3) {
+                cameraControlButton("Look left", systemImage: "arrow.left") {
+                    model.rotateCamera(yaw: -5)
+                }
+                cameraControlButton("Recenter camera", systemImage: "viewfinder") {
+                    model.resetCamera()
+                }
+                cameraControlButton("Look right", systemImage: "arrow.right") {
+                    model.rotateCamera(yaw: 5)
+                }
+            }
+
+            cameraControlButton("Look down", systemImage: "arrow.down") {
+                model.rotateCamera(pitch: -5)
+            }
+        }
+        .padding(6)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.cyan.opacity(0.5), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Virtual camera controls")
+    }
+
+    private func cameraControlButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.caption.bold())
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.cyan.opacity(0.95))
         .help(title)
         .accessibilityLabel(title)
     }

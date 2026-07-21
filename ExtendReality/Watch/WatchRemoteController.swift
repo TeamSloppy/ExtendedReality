@@ -72,7 +72,8 @@ final class WatchRemoteController: NSObject {
             },
             trackingStatus: headPose.statusText,
             isTracking: headPose.isTracking,
-            voiceAssistantPhase: voiceAssistant.state.phase.rawValue
+            voiceAssistantPhase: voiceAssistant.state.phase.rawValue,
+            playback: surfaces.watchPlaybackState(for: workspace.activeWindowID)
         )
     }
 
@@ -109,6 +110,10 @@ final class WatchRemoteController: NSObject {
             surfaces.remove(windowID: id)
         case .back:
             inputRouter.back(in: workspace.activeWindowID)
+        case .togglePlayback:
+            inputRouter.media(.togglePlayback, in: workspace.activeWindowID)
+        case .seekPlayback(let seconds):
+            inputRouter.media(.seek(seconds: seconds), in: workspace.activeWindowID)
         case .toggleVoiceAssistant:
             voiceAssistant.toggle()
         case .requestState:
@@ -124,7 +129,7 @@ final class WatchRemoteController: NSObject {
         switch command {
         case .focusWindow, .openWindow, .minimizeWindow, .closeWindow, .recenter, .toggleVoiceAssistant, .requestState:
             true
-        case .pointerDelta, .scroll, .click, .back:
+        case .pointerDelta, .scroll, .click, .back, .togglePlayback, .seekPlayback:
             false
         }
     }

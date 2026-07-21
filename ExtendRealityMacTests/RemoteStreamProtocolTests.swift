@@ -5,6 +5,26 @@ import Testing
 
 struct RemoteStreamProtocolTests {
     @Test
+    func applicationCatalogRoundTripsThroughJSON() throws {
+        let catalog = RemoteShareableApplicationCatalog(
+            version: 1,
+            applications: [
+                RemoteShareableApplication(
+                    id: "pid:321",
+                    name: "Preview",
+                    bundleIdentifier: "com.apple.Preview",
+                    processID: 321
+                )
+            ]
+        )
+
+        let data = try JSONEncoder().encode(catalog)
+        let decoded = try JSONDecoder().decode(RemoteShareableApplicationCatalog.self, from: data)
+
+        #expect(decoded == catalog)
+    }
+
+    @Test
     func streamSessionRoundTripsThroughJSON() throws {
         let session = RemoteStreamSession(
             version: 1,
@@ -18,13 +38,29 @@ struct RemoteStreamProtocolTests {
                     height: 1_080
                 )
             ],
-            cursorURL: URL(string: "http://mac.local:52799/api/v1/cursor")
+            cursorURL: URL(string: "http://mac.local:52799/api/v1/cursor"),
+            audio: SessionAudioConfiguration(
+                playbackURL: URL(string: "http://mac.local:52799/api/v1/audio/playback.pcm")!,
+                microphoneURL: URL(string: "http://mac.local:52799/api/v1/audio/microphone.pcm")!
+            )
         )
 
         let data = try JSONEncoder().encode(session)
         let decoded = try JSONDecoder().decode(RemoteStreamSession.self, from: data)
 
         #expect(decoded == session)
+        #expect(decoded.audio?.isSupported == true)
+    }
+
+    @Test
+    func audioConfigurationRejectsAnUnknownVersion() {
+        let audio = SessionAudioConfiguration(
+            version: 2,
+            playbackURL: URL(string: "http://mac.local/playback")!,
+            microphoneURL: URL(string: "http://mac.local/microphone")!
+        )
+
+        #expect(!audio.isSupported)
     }
 
     @Test

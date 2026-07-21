@@ -19,11 +19,10 @@ struct DashboardEditorView: View {
                         DashboardEditorRow(item: item)
                     }
                     .onDelete(perform: dashboard.remove)
-                    .onMove(perform: dashboard.move)
                 } header: {
                     Text("Dashboard items")
                 } footer: {
-                    Text("Drag items into any order. Shortcuts and widgets automatically continue onto additional pages.")
+                    Text("Use Arrange mode on the glasses trackpad to move and resize cards.")
                 }
 
                 Section("Add") {
@@ -47,15 +46,20 @@ struct DashboardEditorView: View {
                         }
                     }
                 }
+
+                Section {
+                    Button("Reset Layout", systemImage: "rectangle.3.group") {
+                        dashboard.resetLayout()
+                    }
+                } footer: {
+                    Text("Restores the default card positions without removing dashboard items.")
+                }
             }
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    EditButton()
                 }
             }
         }
@@ -130,6 +134,7 @@ private struct DashboardEditorRow: View {
         switch item.content {
         case .app(.gallery): .orange
         case .app(.browser): .cyan
+        case .app(.maps): .green
         case .app(.youtube): .red
         case .app(.remoteDesktop): .purple
         case .pwa: .blue

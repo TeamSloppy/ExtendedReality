@@ -22,8 +22,11 @@ final class AppEnvironment {
     let youtubeAPI: YouTubeAPIClient
     let macStreamClient: MacStreamClient
     let externalDisplayCapture: ExternalDisplayCaptureCoordinator
+    let microphoneHub: MicrophoneAudioHub
     let voiceAssistantSettings: VoiceAssistantSettings
     let voiceAssistant: VoiceAssistantCoordinator
+    let wakeWordController: WakeWordController
+    let voiceModeActivationRouter: VoiceModeActivationRouter
 
     private let defaults: UserDefaults
     private var macStreamWindowIDsByEndpoint: [String: UUID] = [:]
@@ -67,12 +70,15 @@ final class AppEnvironment {
         )
         keychain = KeychainStore(service: keychainService)
         voiceAssistantSettings = VoiceAssistantSettings(defaults: dashboardDefaults, keychain: keychain)
+        voiceModeActivationRouter = .shared
+        microphoneHub = MicrophoneAudioHub()
         youtubeAPI = YouTubeAPIClient()
-        macStreamClient = MacStreamClient()
+        macStreamClient = MacStreamClient(microphoneHub: microphoneHub)
         externalDisplayCapture = ExternalDisplayCaptureCoordinator()
         surfaces = SurfaceRegistry(
             inputRouter: inputRouter,
             workspace: workspace,
+            systemData: systemData,
             keychain: keychain,
             pwaCapabilityProvider: { appID, capability in
                 pwaStore.installation(for: appID)?.grants(capability) == true
@@ -90,7 +96,13 @@ final class AppEnvironment {
             settings: voiceAssistantSettings,
             workspace: workspace,
             contextProvider: surfaces,
+            capture: NativeVoiceCapture(audioHub: microphoneHub),
             defaults: dashboardDefaults
+        )
+        wakeWordController = WakeWordController(
+            settings: voiceAssistantSettings,
+            assistant: voiceAssistant,
+            microphoneHub: microphoneHub
         )
         watchRemote = WatchRemoteController(
             workspace: workspace,
@@ -105,16 +117,26 @@ final class AppEnvironment {
             headPose: headPose,
             watchRemote: watchRemote
         )
+        surfaces.playbackStateDidChange = { [weak self] in
+            self?.watchRemote.syncState()
+        }
         macStreamClient.cursorPositionHandler = { [weak self] position in
             self?.applyMacCursorPosition(position)
         }
         voiceAssistant.onStateChange = { [weak self] in
+            self?.wakeWordController.assistantStateDidChange()
             self?.watchRemote.syncState()
+        }
+        voiceAssistantSettings.onWakeWordConfigurationChange = { [weak self] in
+            self?.wakeWordController.configurationDidChange()
         }
         inputRouter.chromeActionHandler = { [weak self] windowID, action in
             switch action {
             case .toggleOrientation:
                 self?.workspace.toggleLayoutOrientation(windowID)
+            case .toggleAttachment:
+                guard let self else { return }
+                workspace.toggleAttachmentMode(for: windowID, headPose: headPose.pose)
             case .minimize:
                 self?.minimizeWindow(windowID)
             case .toggleExpanded:
@@ -127,8 +149,8 @@ final class AppEnvironment {
         inputRouter.dashboardActionHandler = { [weak self] itemID in
             self?.activateDashboardItem(itemID)
         }
-        inputRouter.dashboardScrollHandler = { [weak dashboard] delta in
-            dashboard?.consumePageScroll(delta)
+        inputRouter.voiceAssistantDismissHandler = { [weak self] in
+            self?.voiceAssistant.cancel()
         }
         inputRouter.statusBarActionHandler = { [weak self] action in
             guard let self else { return }
@@ -137,19 +159,27 @@ final class AppEnvironment {
                 showDashboard()
             case .pointerMode:
                 workspace.controlMode = .pointer
+                dashboard.clearSelection()
             case .arrangeMode:
                 workspace.controlMode = .arrange
+            case .toggleWorkspaceLayout:
+                workspace.toggleLayoutMode(for: headPose.pose)
             case .recenter:
                 workspace.recenter()
                 inputRouter.resetCursor()
                 headPose.recenter()
             }
         }
-        inputRouter.dockActionHandler = { [weak self] windowID in
+        inputRouter.dockActionHandler = { [weak self] action in
             guard let self else { return }
-            workspace.focus(windowID)
-            inputRouter.setAppSwitcherPresented(false)
-            watchRemote.syncState()
+            switch action {
+            case .dismiss:
+                workspace.dismissDock()
+                inputRouter.clearDockHitFrames()
+            case .launch(let itemID):
+                activateDashboardItem(itemID)
+            }
+            self.watchRemote.syncState()
         }
         inputRouter.appSwitcherActionHandler = { [weak self] windowID in
             guard let self else { return }
@@ -172,6 +202,10 @@ final class AppEnvironment {
         surfaces.prepare(for: workspace.windows)
     }
 
+    func setForegroundActive(_ isActive: Bool) {
+        wakeWordController.setForegroundActive(isActive)
+    }
+
     @discardableResult
     func openWindow(_ kind: WindowKind) -> WorkspaceWindow {
         let window = workspace.addWindow(kind: kind)
@@ -180,11 +214,14 @@ final class AppEnvironment {
         return window
     }
 
-    func openMacStream() async {
+    func openMacStream(applicationID: String? = nil) async {
         let storedLayout = defaults.string(forKey: RemoteDisplayLayout.defaultsKey)
             .flatMap(RemoteDisplayLayout.init(rawValue:)) ?? .single
         do {
-            let session = try await macStreamClient.startStream(layout: storedLayout)
+            let session = try await macStreamClient.startStream(
+                layout: storedLayout,
+                applicationID: applicationID
+            )
             replaceMacStreamWindows(with: session)
             ControllerHaptics.click()
         } catch {
@@ -200,15 +237,23 @@ final class AppEnvironment {
         }
         guard shouldRestart else { return }
         Task { @MainActor [weak self] in
-            await self?.openMacStream()
+            guard let self else { return }
+            await self.openMacStream(applicationID: self.macStreamClient.activeApplicationID)
         }
     }
 
     func closeWindow(_ id: UUID) {
+        let wasMacStream = macStreamWindowIDsByEndpoint.values.contains(id)
         workspace.close(id)
         inputRouter.setAppSwitcherPresented(workspace.isAppSwitcherPresented)
         inputRouter.unregister(windowID: id)
         surfaces.remove(windowID: id)
+        if wasMacStream {
+            macStreamWindowIDsByEndpoint = macStreamWindowIDsByEndpoint.filter { $0.value != id }
+            if macStreamWindowIDsByEndpoint.isEmpty {
+                macStreamClient.stopStream()
+            }
+        }
         watchRemote.syncState()
     }
 
@@ -219,12 +264,21 @@ final class AppEnvironment {
 
     func showDashboard() {
         workspace.showDashboard()
+        dashboard.clearSelection()
         inputRouter.setAppSwitcherPresented(false)
+        inputRouter.setDashboardPresented(true)
         watchRemote.syncState()
     }
 
     func showWorkspace() {
-        guard workspace.restoreMostRecentWindow() else { return }
+        guard workspace.dismissDashboard() else { return }
+        inputRouter.setAppSwitcherPresented(false)
+        inputRouter.setDashboardPresented(false)
+        watchRemote.syncState()
+    }
+
+    func showDock() {
+        workspace.showDock()
         inputRouter.setAppSwitcherPresented(false)
         watchRemote.syncState()
     }
@@ -318,6 +372,33 @@ final class AppEnvironment {
         case .widget(.calendar), .widget(.health):
             break
         }
+    }
+
+    func handleIncomingURL(_ url: URL) {
+        let rawRoute: String?
+        if url.scheme?.lowercased() == "extendreality",
+           url.host?.lowercased() == "maps" {
+            rawRoute = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .first(where: { $0.name == "route" })?
+                .value
+        } else if let host = url.host?.lowercased(),
+                  host == "maps.apple.com" || host.hasSuffix(".maps.apple.com") || host.hasSuffix("maps.apple") {
+            rawRoute = url.absoluteString
+        } else {
+            rawRoute = nil
+        }
+
+        guard let rawRoute, !rawRoute.isEmpty else { return }
+        let window: WorkspaceWindow
+        if let existing = workspace.windows.first(where: { $0.kind == .maps }) {
+            workspace.focusAndCenter(existing.id, for: headPose.pose)
+            window = existing
+        } else {
+            window = openWindow(.maps)
+        }
+        let session = surfaces.mapsSession(for: window.id)
+        Task { await session.importAppleMapsLink(rawRoute) }
     }
 
     private func replaceMacStreamWindows(with session: MacStreamSession) {
@@ -417,6 +498,7 @@ extension View {
             .environment(environment.systemData)
             .environment(environment.voiceAssistant)
             .environment(environment.voiceAssistantSettings)
+            .environment(environment.wakeWordController)
             .defaultAppStorage(PreviewFixtures.userDefaults)
     }
 }

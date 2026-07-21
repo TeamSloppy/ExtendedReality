@@ -4,38 +4,76 @@ struct SpatialDashboardView: View {
     let environment: AppEnvironment
     @Environment(DashboardStore.self) private var dashboard
     @Environment(InputRouter.self) private var inputRouter
-
-    private static let coordinateSpace = "spatial.dashboard"
+    @Environment(HeadPoseController.self) private var headPose
 
     var body: some View {
         GeometryReader { proxy in
+            let rotation = DashboardProjection.stabilizationRotation(
+                for: headPose.pose,
+                isTracking: headPose.isTracking
+            )
+            let presentations = dashboard.items.map {
+                DashboardProjection.presentation(
+                    for: $0,
+                    in: proxy.size,
+                    rotationDegrees: rotation
+                )
+            }
+            let inputLayouts = Dictionary(
+                uniqueKeysWithValues: presentations.map { presentation in
+                    (
+                        presentation.id,
+                        DashboardItemInputLayout(
+                            center: CGPoint(
+                                x: presentation.center.x / max(proxy.size.width, 1),
+                                y: presentation.center.y / max(proxy.size.height, 1)
+                            ),
+                            size: CGSize(
+                                width: presentation.size.width / max(proxy.size.width, 1),
+                                height: presentation.size.height / max(proxy.size.height, 1)
+                            ),
+                            rotationRadians: presentation.rotationDegrees * .pi / 180,
+                            zIndex: presentation.item.placement.zIndex
+                        )
+                    )
+                }
+            )
+
             ZStack {
                 dashboardBackdrop
 
-                VStack(spacing: 24) {
-                    DashboardClock()
-
-                    HStack(alignment: .top, spacing: 42) {
-                        launcherPages
-                            .frame(maxWidth: .infinity)
-
-                        widgetPages
-                            .frame(width: min(max(proxy.size.width * 0.19, 270), 340))
+                if presentations.isEmpty {
+                    ContentUnavailableView(
+                        "No dashboard items",
+                        systemImage: "rectangle.3.group",
+                        description: Text("Add widgets and shortcuts from the iPhone controller.")
+                    )
+                    .foregroundStyle(.white.opacity(0.62))
+                } else {
+                    ForEach(presentations.sorted(by: { $0.item.placement.zIndex < $1.item.placement.zIndex })) { presentation in
+                        DashboardFreeformItemView(
+                            item: presentation.item,
+                            isHovered: inputRouter.dashboardItem() == presentation.id,
+                            isSelected: dashboard.selectedItemID == presentation.id,
+                            isArranging: environment.workspace.controlMode == .arrange,
+                            dashboard: dashboard,
+                            systemData: environment.systemData
+                        ) {
+                            environment.activateDashboardItem(presentation.id)
+                        }
+                        .frame(width: presentation.size.width, height: presentation.size.height)
+                        .rotationEffect(.degrees(presentation.rotationDegrees))
+                        .position(presentation.center)
+                        .zIndex(Double(presentation.item.placement.zIndex))
                     }
-                    .frame(maxHeight: .infinity)
-
-                    pageIndicator
                 }
-                .padding(.top, max(116, proxy.safeAreaInsets.top + 96))
-                .padding(.horizontal, max(54, proxy.size.width * 0.055))
-                .padding(.bottom, max(30, proxy.safeAreaInsets.bottom + 18))
             }
-            .coordinateSpace(name: Self.coordinateSpace)
-            .onPreferenceChange(DashboardHitFramePreferenceKey.self) { frames in
-                inputRouter.updateDashboardHitFrames(frames, in: proxy.size)
+            .onChange(of: inputLayouts, initial: true) { _, layouts in
+                inputRouter.updateDashboardLayouts(layouts)
             }
             .onDisappear {
                 inputRouter.clearDashboardHitFrames()
+                dashboard.clearSelection()
             }
         }
     }
@@ -44,135 +82,54 @@ struct SpatialDashboardView: View {
         ZStack {
             Color.black
             RadialGradient(
-                colors: [Color.orange.opacity(0.12), .clear],
+                colors: [Color.orange.opacity(0.08), .clear],
                 center: UnitPoint(x: 0.17, y: 0.52),
                 startRadius: 10,
                 endRadius: 430
             )
             RadialGradient(
-                colors: [Color.cyan.opacity(0.07), .clear],
+                colors: [Color.cyan.opacity(0.05), .clear],
                 center: UnitPoint(x: 0.78, y: 0.22),
                 startRadius: 10,
                 endRadius: 520
             )
         }
     }
-
-    private var launcherPages: some View {
-        TabView(selection: pageSelection) {
-            ForEach(0 ..< dashboard.pageCount, id: \.self) { page in
-                let items = dashboard.launcherPage(page)
-                Group {
-                    if items.isEmpty {
-                        ContentUnavailableView(
-                            "No shortcuts on this page",
-                            systemImage: "square.grid.3x3",
-                            description: Text("Add apps and browser bookmarks from the iPhone controller.")
-                        )
-                        .foregroundStyle(.white.opacity(0.62))
-                    } else {
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(minimum: 110), spacing: 24),
-                                count: 5
-                            ),
-                            alignment: .center,
-                            spacing: 22
-                        ) {
-                            ForEach(items) { item in
-                                DashboardLauncherTile(
-                                    item: item,
-                                    isHovered: inputRouter.dashboardItem() == item.id
-                                ) {
-                                    environment.activateDashboardItem(item.id)
-                                }
-                                .dashboardHitTarget(item.id, in: Self.coordinateSpace)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 8)
-                .tag(page)
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .animation(.easeOut(duration: 0.22), value: dashboard.selectedPage)
-    }
-
-    private var widgetPages: some View {
-        TabView(selection: pageSelection) {
-            ForEach(0 ..< dashboard.pageCount, id: \.self) { page in
-                VStack(spacing: 14) {
-                    ForEach(dashboard.widgetPage(page)) { item in
-                        DashboardWidgetCard(
-                            item: item,
-                            isHovered: inputRouter.dashboardItem() == item.id,
-                            dashboard: dashboard,
-                            systemData: environment.systemData
-                        ) {
-                            environment.activateDashboardItem(item.id)
-                        }
-                        .dashboardHitTarget(item.id, in: Self.coordinateSpace)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 2)
-                .tag(page)
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .animation(.easeOut(duration: 0.22), value: dashboard.selectedPage)
-    }
-
-    private var pageIndicator: some View {
-        HStack(spacing: 9) {
-            ForEach(0 ..< dashboard.pageCount, id: \.self) { page in
-                Button {
-                    dashboard.selectedPage = page
-                } label: {
-                    Capsule()
-                        .fill(page == dashboard.selectedPage ? Color.orange : Color.white.opacity(0.23))
-                        .frame(width: page == dashboard.selectedPage ? 26 : 8, height: 8)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dashboard page \(page + 1)")
-            }
-        }
-        .frame(height: 18)
-    }
-
-    private var pageSelection: Binding<Int> {
-        Binding(
-            get: { dashboard.selectedPage },
-            set: { dashboard.selectedPage = $0 }
-        )
-    }
-
 }
 
-private struct DashboardClock: View {
+private struct DashboardFreeformItemView: View {
+    let item: DashboardItem
+    let isHovered: Bool
+    let isSelected: Bool
+    let isArranging: Bool
+    let dashboard: DashboardStore
+    let systemData: SystemDataStore
+    let action: () -> Void
+
     var body: some View {
-        PeriodicDateView(every: .seconds(30)) { date in
-            VStack(spacing: 3) {
-                HStack(spacing: 0) {
-                    Text("extend")
-                        .foregroundStyle(.orange)
-                    Text("reality")
-                        .foregroundStyle(.cyan)
-                }
-                .font(.system(size: 19, weight: .medium, design: .rounded))
-
-                Text(date, format: .dateTime.hour().minute())
-                    .font(.system(size: 72, weight: .ultraLight, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.96))
-
-                Text(date, format: .dateTime.weekday(.wide).month(.wide).day())
-                    .font(.system(size: 19, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.52))
+        Group {
+            switch item.content {
+            case .app, .pwa, .bookmark:
+                DashboardLauncherTile(item: item, isHovered: isHovered, action: action)
+            case .widget:
+                DashboardWidgetCard(
+                    item: item,
+                    isHovered: isHovered,
+                    dashboard: dashboard,
+                    systemData: systemData,
+                    action: action
+                )
             }
         }
-        .accessibilityElement(children: .combine)
+        .overlay {
+            if isArranging, isSelected {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(.orange, style: StrokeStyle(lineWidth: 3, dash: [9, 7]))
+                    .padding(-7)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityHint(isArranging ? "Move with one finger and resize with a pinch" : "Open from dashboard")
     }
 }
 
@@ -180,6 +137,7 @@ private struct DashboardLauncherTile: View {
     let item: DashboardItem
     let isHovered: Bool
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -207,7 +165,7 @@ private struct DashboardLauncherTile: View {
         }
         .buttonStyle(.plain)
         .scaleEffect(isHovered ? 1.055 : 1)
-        .animation(.easeOut(duration: 0.16), value: isHovered)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovered)
         .accessibilityLabel(title)
         .accessibilityHint("Open from dashboard")
     }
@@ -249,6 +207,7 @@ private struct DashboardLauncherTile: View {
         switch item.content {
         case .app(.gallery): .orange
         case .app(.browser): .cyan
+        case .app(.maps): .green
         case .app(.youtube): .red
         case .app(.remoteDesktop): .purple
         case .pwa: .blue
@@ -264,6 +223,7 @@ private struct DashboardWidgetCard: View {
     let dashboard: DashboardStore
     let systemData: SystemDataStore
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -290,7 +250,7 @@ private struct DashboardWidgetCard: View {
         }
         .buttonStyle(.plain)
         .scaleEffect(isHovered ? 1.025 : 1)
-        .animation(.easeOut(duration: 0.16), value: isHovered)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovered)
     }
 
     private var calendarWidget: some View {
@@ -470,27 +430,6 @@ struct PeriodicDateView<Content: View>: View {
     private struct ScheduleID: Hashable {
         let isEnabled: Bool
         let updatesUntil: Date?
-    }
-}
-
-private struct DashboardHitFramePreferenceKey: PreferenceKey {
-    static let defaultValue: [UUID: CGRect] = [:]
-
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
-private extension View {
-    func dashboardHitTarget(_ id: UUID, in coordinateSpace: String) -> some View {
-        background {
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: DashboardHitFramePreferenceKey.self,
-                    value: [id: proxy.frame(in: .named(coordinateSpace))]
-                )
-            }
-        }
     }
 }
 

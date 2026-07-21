@@ -4,19 +4,33 @@ import SwiftUI
 @main
 struct ExtendRealityMacApp: App {
     @NSApplicationDelegateAdaptor(MacAppDelegate.self) private var appDelegate
-    @State private var store = MacStreamingStore()
+    @State private var model = MacAppModel()
 
     var body: some Scene {
         WindowGroup("ExtendReality Mac", id: "main") {
-            ContentView(store: store)
+            ContentView(model: model)
         }
         .defaultSize(width: 1_100, height: 720)
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Refresh Displays") {
-                    Task { await store.refreshDisplays() }
+                    Task {
+                        if model.mode == .sharing { await model.sharing.refreshDisplays() }
+                        else { await model.direct.refresh() }
+                    }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+            CommandMenu("Direct Mode") {
+                Button(model.direct.isPointerCaptured ? "Release Spatial Pointer" : "Capture Spatial Pointer") {
+                    model.direct.togglePointerCapture()
+                }
+                .keyboardShortcut(.space, modifiers: [.control, .option])
+                .disabled(model.direct.state != .running)
+
+                Button("Recenter") { model.direct.recenter() }
+                    .keyboardShortcut("r", modifiers: [.control, .option])
+                    .disabled(model.direct.state != .running)
             }
         }
     }

@@ -7,6 +7,9 @@ import Foundation
 /// completely inactive when that UserDefaults value is missing.
 @MainActor
 final class DebugSocketStreamer: NSObject, ARSessionDelegate {
+    private static let targetUpdateRate = 60.0
+    private static let snapshotInterval: Duration = .nanoseconds(16_666_667)
+
     private struct PhoneMotion {
         var orientation = HeadPose.identity
         var acceleration = CMAcceleration()
@@ -60,7 +63,7 @@ final class DebugSocketStreamer: NSObject, ARSessionDelegate {
 
     private func startPhoneMotion() {
         guard motionManager.isDeviceMotionAvailable else { return }
-        motionManager.deviceMotionUpdateInterval = 1.0 / 50.0
+        motionManager.deviceMotionUpdateInterval = 1.0 / Self.targetUpdateRate
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
             MainActor.assumeIsolated {
                 self?.consume(motion)
@@ -101,7 +104,7 @@ final class DebugSocketStreamer: NSObject, ARSessionDelegate {
         streamTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.sendSnapshot()
-                try? await Task.sleep(for: .milliseconds(50))
+                try? await Task.sleep(for: Self.snapshotInterval)
             }
         }
     }

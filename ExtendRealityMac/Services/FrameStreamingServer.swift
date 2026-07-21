@@ -19,27 +19,36 @@ final class FrameStreamingServer {
     private let queue = DispatchQueue(label: "com.vladprusakov.ExtendReality.streaming")
     private var listener: NWListener?
     private var clients: [UUID: Client] = [:]
+    private var audioPlaybackClients: [UUID: NWConnection] = [:]
+    private var microphoneClients: [UUID: NWConnection] = [:]
     private var layout: StreamLayout = .single
     private var displays: [CaptureDisplay] = []
     private var latestFrames: [CGDirectDisplayID: CGImage] = [:]
     private var latestComposite: CGImage?
     private var usesVirtualCursor = false
+    private var isApplicationCapture = false
     private var lastPublishTime: ContinuousClock.Instant?
     private var publicAddress: URL?
 
     var onAddressChanged: ((URL?) -> Void)?
     var onViewerCountChanged: ((Int) -> Void)?
+    var onAudioPlaybackClientCountChanged: ((Int) -> Void)?
+    var onMicrophoneClientCountChanged: ((Int) -> Void)?
+    var onMicrophonePCM: ((Data) -> Void)?
     var onFailure: ((String) -> Void)?
-    var onStartRequested: ((StreamLayout, Bool) async throws -> Void)?
+    var onApplicationsRequested: (() async throws -> [RemoteShareableApplication])?
+    var onStartRequested: ((RemoteStreamStartRequest) async throws -> Void)?
 
     func updateMetadata(
         layout: StreamLayout,
         displays: [CaptureDisplay],
-        usesVirtualCursor: Bool = false
+        usesVirtualCursor: Bool = false,
+        isApplicationCapture: Bool = false
     ) {
         self.layout = layout
         self.displays = displays
         self.usesVirtualCursor = usesVirtualCursor
+        self.isApplicationCapture = isApplicationCapture
     }
 
     func start() throws {
@@ -69,12 +78,34 @@ final class FrameStreamingServer {
         listener = nil
         clients.values.forEach { $0.connection.cancel() }
         clients.removeAll()
+        endAudioSession()
         latestFrames.removeAll()
         latestComposite = nil
         lastPublishTime = nil
         publicAddress = nil
         onAddressChanged?(nil)
         onViewerCountChanged?(0)
+    }
+
+    func endAudioSession() {
+        audioPlaybackClients.values.forEach { $0.cancel() }
+        microphoneClients.values.forEach { $0.cancel() }
+        audioPlaybackClients.removeAll()
+        microphoneClients.removeAll()
+        onAudioPlaybackClientCountChanged?(0)
+        onMicrophoneClientCountChanged?(0)
+    }
+
+    func publishAudio(_ pcm: Data) {
+        guard !pcm.isEmpty else { return }
+        for (id, connection) in audioPlaybackClients {
+            connection.send(content: pcm, completion: .contentProcessed { [weak self] error in
+                guard error != nil else { return }
+                Task { @MainActor [weak self] in
+                    self?.removeAudioPlaybackClient(id)
+                }
+            })
+        }
     }
 
     func publish(
@@ -190,11 +221,18 @@ final class FrameStreamingServer {
                     )
                     return
                 }
-                guard requestData.range(of: Data("\r\n\r\n".utf8)) != nil || isComplete else {
+                let headerSeparator = Data("\r\n\r\n".utf8)
+                guard let headerRange = requestData.range(of: headerSeparator) else {
+                    if isComplete {
+                        self.sendNotFound(to: connection)
+                        return
+                    }
                     self.receiveRequest(on: connection, accumulated: requestData)
                     return
                 }
-                guard let request = String(data: requestData, encoding: .utf8),
+                let headerData = requestData[..<headerRange.lowerBound]
+                let initialBody = Data(requestData[headerRange.upperBound...])
+                guard let request = String(data: headerData, encoding: .utf8),
                       let firstLine = request.split(separator: "\r\n").first else {
                     self.sendNotFound(to: connection)
                     return
@@ -204,12 +242,22 @@ final class FrameStreamingServer {
                     self.sendNotFound(to: connection)
                     return
                 }
-                self.route(method: String(parts[0]), path: String(parts[1]), connection: connection)
+                self.route(
+                    method: String(parts[0]),
+                    path: String(parts[1]),
+                    initialBody: initialBody,
+                    connection: connection
+                )
             }
         }
     }
 
-    private func route(method: String, path: String, connection: NWConnection) {
+    private func route(
+        method: String,
+        path: String,
+        initialBody: Data,
+        connection: NWConnection
+    ) {
         if path == "/" {
             sendHTML(streamPath: "/stream.mjpeg", to: connection)
         } else if path == "/manifest.json" {
@@ -220,8 +268,14 @@ final class FrameStreamingServer {
             handleStartRequest(path: path, connection: connection)
         } else if method == "GET", path == "/api/v1/status" {
             sendStatus(to: connection)
+        } else if method == "GET", path == "/api/v1/applications" {
+            sendApplications(to: connection)
         } else if method == "GET", path == "/api/v1/cursor" {
             sendCursorPosition(to: connection)
+        } else if method == "GET", path == "/api/v1/audio/playback.pcm" {
+            beginAudioPlayback(connection: connection)
+        } else if method == "POST", path == "/api/v1/audio/microphone.pcm" {
+            beginMicrophoneCapture(connection: connection, initialData: initialBody)
         } else if path.hasPrefix("/display/"), !path.hasSuffix(".mjpeg") {
             let rawID = path.replacingOccurrences(of: "/display/", with: "")
             guard let id = CGDirectDisplayID(rawID), displays.contains(where: { $0.id == id }) else {
@@ -261,7 +315,16 @@ final class FrameStreamingServer {
                 let usesVirtualCursor = components.queryItems?
                     .first(where: { $0.name == "cursor" })?
                     .value == "virtual"
-                try await onStartRequested(requestedLayout, usesVirtualCursor)
+                let applicationID = components.queryItems?
+                    .first(where: { $0.name == "application" })?
+                    .value
+                try await onStartRequested(
+                    RemoteStreamStartRequest(
+                        layout: requestedLayout,
+                        usesVirtualCursor: usesVirtualCursor,
+                        applicationID: applicationID
+                    )
+                )
                 guard let session = self.makeRemoteSession() else {
                     self.sendAPIError("The stream address is not ready.", status: "503 Service Unavailable", to: connection)
                     return
@@ -270,6 +333,41 @@ final class FrameStreamingServer {
                 self.sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
             } catch {
                 self.sendAPIError(error.localizedDescription, status: "409 Conflict", to: connection)
+            }
+        }
+    }
+
+    private func sendApplications(to connection: NWConnection) {
+        guard let onApplicationsRequested else {
+            sendAPIError(
+                "The capture controller is unavailable.",
+                status: "503 Service Unavailable",
+                to: connection
+            )
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let applications = try await onApplicationsRequested()
+                let catalog = RemoteShareableApplicationCatalog(
+                    version: 1,
+                    applications: applications
+                )
+                let body = try JSONEncoder().encode(catalog)
+                self.sendResponse(
+                    status: "200 OK",
+                    contentType: "application/json",
+                    body: body,
+                    to: connection
+                )
+            } catch {
+                self.sendAPIError(
+                    error.localizedDescription,
+                    status: "409 Conflict",
+                    to: connection
+                )
             }
         }
     }
@@ -290,6 +388,69 @@ final class FrameStreamingServer {
             guard error != nil else { return }
             Task { @MainActor [weak self] in self?.remove(clientID: id) }
         })
+    }
+
+    private func beginAudioPlayback(connection: NWConnection) {
+        let id = UUID()
+        audioPlaybackClients[id] = connection
+        onAudioPlaybackClientCountChanged?(audioPlaybackClients.count)
+        let header = """
+        HTTP/1.1 200 OK\r
+        Cache-Control: no-store\r
+        Connection: close\r
+        Content-Type: application/x-extendreality-pcm\r
+        X-Audio-Sample-Rate: \(SessionAudioConfiguration.sampleRate)\r
+        X-Audio-Channels: \(SessionAudioConfiguration.playbackChannels)\r
+        X-Audio-Sample-Format: s16le\r
+        \r
+
+        """
+        connection.send(content: Data(header.utf8), completion: .contentProcessed { [weak self] error in
+            guard error != nil else { return }
+            Task { @MainActor [weak self] in
+                self?.removeAudioPlaybackClient(id)
+            }
+        })
+    }
+
+    private func beginMicrophoneCapture(connection: NWConnection, initialData: Data) {
+        let id = UUID()
+        microphoneClients[id] = connection
+        onMicrophoneClientCountChanged?(microphoneClients.count)
+        if !initialData.isEmpty {
+            onMicrophonePCM?(initialData)
+        }
+        let response = """
+        HTTP/1.1 200 OK\r
+        Cache-Control: no-store\r
+        Connection: close\r
+        Content-Type: application/json\r
+        \r
+
+        """
+        connection.send(content: Data(response.utf8), completion: .contentProcessed { [weak self] error in
+            guard error != nil else { return }
+            Task { @MainActor [weak self] in
+                self?.removeMicrophoneClient(id)
+            }
+        })
+        receiveMicrophoneData(clientID: id, connection: connection)
+    }
+
+    private func receiveMicrophoneData(clientID: UUID, connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 32_768) { [weak self] data, _, isComplete, error in
+            Task { @MainActor [weak self] in
+                guard let self, self.microphoneClients[clientID] != nil else { return }
+                if let data, !data.isEmpty {
+                    self.onMicrophonePCM?(data)
+                }
+                if error != nil || isComplete {
+                    self.removeMicrophoneClient(clientID)
+                } else {
+                    self.receiveMicrophoneData(clientID: clientID, connection: connection)
+                }
+            }
+        }
     }
 
     private func send(jpeg: Data, to clientID: UUID, connection: NWConnection) {
@@ -318,6 +479,14 @@ final class FrameStreamingServer {
             "version": 1,
             "layout": layout.rawValue,
             "primaryStream": "/stream.mjpeg",
+            "audio": [
+                "playback": "/api/v1/audio/playback.pcm",
+                "microphone": "/api/v1/audio/microphone.pcm",
+                "sampleRate": SessionAudioConfiguration.sampleRate,
+                "playbackChannels": SessionAudioConfiguration.playbackChannels,
+                "microphoneChannels": SessionAudioConfiguration.microphoneChannels,
+                "sampleFormat": "s16le",
+            ],
             "displays": displays.map { display in
                 [
                     "id": display.id,
@@ -340,6 +509,9 @@ final class FrameStreamingServer {
             "streaming": !latestFrames.isEmpty || latestComposite != nil,
             "viewers": clients.count,
             "virtualCursor": usesVirtualCursor,
+            "source": isApplicationCapture ? "application" : "display",
+            "audioPlaybackClients": audioPlaybackClients.count,
+            "microphoneClients": microphoneClients.count,
         ]
         let body = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])) ?? Data("{}".utf8)
         sendResponse(status: "200 OK", contentType: "application/json", body: body, to: connection)
@@ -394,10 +566,22 @@ final class FrameStreamingServer {
             version: 1,
             layout: layout,
             streams: endpoints,
-            cursorURL: publicAddress
+            cursorURL: isApplicationCapture ? nil : publicAddress
                 .appendingPathComponent("api")
                 .appendingPathComponent("v1")
-                .appendingPathComponent("cursor")
+                .appendingPathComponent("cursor"),
+            audio: SessionAudioConfiguration(
+                playbackURL: publicAddress
+                    .appendingPathComponent("api")
+                    .appendingPathComponent("v1")
+                    .appendingPathComponent("audio")
+                    .appendingPathComponent("playback.pcm"),
+                microphoneURL: publicAddress
+                    .appendingPathComponent("api")
+                    .appendingPathComponent("v1")
+                    .appendingPathComponent("audio")
+                    .appendingPathComponent("microphone.pcm")
+            )
         )
     }
 
@@ -427,14 +611,31 @@ final class FrameStreamingServer {
     }
 
     private func remove(connection: NWConnection?) {
-        guard let connection,
-              let id = clients.first(where: { $0.value.connection === connection })?.key else { return }
-        remove(clientID: id)
+        guard let connection else { return }
+        if let id = clients.first(where: { $0.value.connection === connection })?.key {
+            remove(clientID: id)
+        }
+        if let id = audioPlaybackClients.first(where: { $0.value === connection })?.key {
+            removeAudioPlaybackClient(id)
+        }
+        if let id = microphoneClients.first(where: { $0.value === connection })?.key {
+            removeMicrophoneClient(id)
+        }
     }
 
     private func remove(clientID: UUID) {
         clients.removeValue(forKey: clientID)?.connection.cancel()
         onViewerCountChanged?(clients.count)
+    }
+
+    private func removeAudioPlaybackClient(_ id: UUID) {
+        audioPlaybackClients.removeValue(forKey: id)?.cancel()
+        onAudioPlaybackClientCountChanged?(audioPlaybackClients.count)
+    }
+
+    private func removeMicrophoneClient(_ id: UUID) {
+        microphoneClients.removeValue(forKey: id)?.cancel()
+        onMicrophoneClientCountChanged?(microphoneClients.count)
     }
 
     private static func jpegData(from image: CGImage) -> Data? {

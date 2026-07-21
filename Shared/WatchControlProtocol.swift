@@ -10,6 +10,8 @@ enum WatchControlCommand: Equatable, Sendable {
     case minimizeWindow(id: UUID)
     case closeWindow(id: UUID)
     case back
+    case togglePlayback
+    case seekPlayback(seconds: Double)
     case toggleVoiceAssistant
     case requestState
 
@@ -49,6 +51,11 @@ enum WatchControlCommand: Equatable, Sendable {
             self = .openWindow(kind: kind)
         case "back":
             self = .back
+        case "togglePlayback":
+            self = .togglePlayback
+        case "seekPlayback":
+            guard let seconds = dictionary[Key.delta] as? Double else { return nil }
+            self = .seekPlayback(seconds: seconds)
         case "toggleVoiceAssistant":
             self = .toggleVoiceAssistant
         case "requestState":
@@ -78,11 +85,39 @@ enum WatchControlCommand: Equatable, Sendable {
             [Key.command: "closeWindow", Key.id: id.uuidString]
         case .back:
             [Key.command: "back"]
+        case .togglePlayback:
+            [Key.command: "togglePlayback"]
+        case .seekPlayback(let seconds):
+            [Key.command: "seekPlayback", Key.delta: seconds]
         case .toggleVoiceAssistant:
             [Key.command: "toggleVoiceAssistant"]
         case .requestState:
             [Key.command: "requestState"]
         }
+    }
+}
+
+struct WatchPlaybackState: Equatable, Sendable {
+    let windowID: UUID
+    let isPlaying: Bool
+
+    init(windowID: UUID, isPlaying: Bool) {
+        self.windowID = windowID
+        self.isPlaying = isPlaying
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let rawWindowID = dictionary["windowID"] as? String,
+              let windowID = UUID(uuidString: rawWindowID),
+              let isPlaying = dictionary["isPlaying"] as? Bool else { return nil }
+        self.init(windowID: windowID, isPlaying: isPlaying)
+    }
+
+    var dictionary: [String: Any] {
+        [
+            "windowID": windowID.uuidString,
+            "isPlaying": isPlaying
+        ]
     }
 }
 
@@ -124,19 +159,22 @@ struct WatchWorkspaceSnapshot: Equatable, Sendable {
     let trackingStatus: String
     let isTracking: Bool
     let voiceAssistantPhase: String
+    let playback: WatchPlaybackState?
 
     init(
         activeWindowID: UUID?,
         windows: [WatchWindowSummary],
         trackingStatus: String,
         isTracking: Bool,
-        voiceAssistantPhase: String = "idle"
+        voiceAssistantPhase: String = "idle",
+        playback: WatchPlaybackState? = nil
     ) {
         self.activeWindowID = activeWindowID
         self.windows = windows
         self.trackingStatus = trackingStatus
         self.isTracking = isTracking
         self.voiceAssistantPhase = voiceAssistantPhase
+        self.playback = playback
     }
 
     init?(dictionary: [String: Any]) {
@@ -151,17 +189,22 @@ struct WatchWorkspaceSnapshot: Equatable, Sendable {
             windows: windows,
             trackingStatus: trackingStatus,
             isTracking: isTracking,
-            voiceAssistantPhase: dictionary["voiceAssistantPhase"] as? String ?? "idle"
+            voiceAssistantPhase: dictionary["voiceAssistantPhase"] as? String ?? "idle",
+            playback: (dictionary["playback"] as? [String: Any]).flatMap(WatchPlaybackState.init(dictionary:))
         )
     }
 
     var dictionary: [String: Any] {
-        [
+        var dictionary: [String: Any] = [
             "activeWindowID": activeWindowID?.uuidString ?? "",
             "windows": windows.map(\.dictionary),
             "trackingStatus": trackingStatus,
             "isTracking": isTracking,
             "voiceAssistantPhase": voiceAssistantPhase
         ]
+        if let playback {
+            dictionary["playback"] = playback.dictionary
+        }
+        return dictionary
     }
 }

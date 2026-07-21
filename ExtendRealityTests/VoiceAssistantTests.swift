@@ -79,6 +79,69 @@ final class VoiceAssistantTests: XCTestCase {
         coordinator.cancel()
     }
 
+    func testVoiceModeActivationIsIdempotentWhileListening() async throws {
+        let environment = AppEnvironment.preview(windowCount: 0)
+        let defaults = UserDefaults(suiteName: "VoiceAssistantActivationTests.\(UUID().uuidString)")!
+        let settings = VoiceAssistantSettings(defaults: defaults, keychain: environment.keychain)
+        settings.isEnabled = true
+        let coordinator = VoiceAssistantCoordinator(
+            settings: settings,
+            workspace: environment.workspace,
+            contextProvider: StubContextProvider(),
+            transport: StubSloppyTransport(),
+            capture: StubVoiceCapture(),
+            localTranscriber: StubLocalTranscriber(),
+            player: StubVoicePlayer(),
+            defaults: defaults
+        )
+
+        coordinator.activate()
+        await waitUntil { coordinator.state.phase == .listening }
+        coordinator.activate()
+
+        XCTAssertEqual(coordinator.state.phase, .listening)
+        coordinator.cancel()
+    }
+
+    func testCancellationStaysVisibleThenAutoHides() async throws {
+        let environment = AppEnvironment.preview(windowCount: 0)
+        let defaults = UserDefaults(suiteName: "VoiceAssistantCancellationTests.\(UUID().uuidString)")!
+        let settings = VoiceAssistantSettings(defaults: defaults, keychain: environment.keychain)
+        settings.isEnabled = true
+        let coordinator = VoiceAssistantCoordinator(
+            settings: settings,
+            workspace: environment.workspace,
+            contextProvider: StubContextProvider(),
+            transport: StubSloppyTransport(),
+            capture: StubVoiceCapture(),
+            localTranscriber: StubLocalTranscriber(),
+            player: StubVoicePlayer(),
+            defaults: defaults,
+            cancellationAutoHideDuration: .milliseconds(20)
+        )
+
+        coordinator.activate()
+        await waitUntil { coordinator.state.phase == .listening }
+        coordinator.cancel()
+
+        XCTAssertEqual(coordinator.state.phase, .cancelled)
+        XCTAssertTrue(coordinator.state.phase.isPresented)
+        await waitUntil { coordinator.state.phase == .idle }
+        XCTAssertEqual(coordinator.state.phase, .idle)
+    }
+
+    func testVoiceModeActivationRouterConsumesOnlyMatchingRequest() throws {
+        let router = VoiceModeActivationRouter()
+        router.requestActivation()
+        let request = try XCTUnwrap(router.pendingRequest)
+
+        router.consume(UUID())
+        XCTAssertEqual(router.pendingRequest, request)
+
+        router.consume(request.id)
+        XCTAssertNil(router.pendingRequest)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () -> Bool

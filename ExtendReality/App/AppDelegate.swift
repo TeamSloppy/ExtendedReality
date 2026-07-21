@@ -34,10 +34,25 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = ControllerViewController(environment: environment)
         window.makeKeyAndVisible()
         self.window = window
+        for context in connectionOptions.urlContexts {
+            environment.handleIncomingURL(context.url)
+        }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for context in URLContexts {
+            AppEnvironment.shared.handleIncomingURL(context.url)
+        }
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
-        AppEnvironment.shared.hardwareMouseInput.setCaptureEnabled(false)
+        let environment = AppEnvironment.shared
+        environment.setForegroundActive(false)
+        environment.hardwareMouseInput.setCaptureEnabled(false)
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        AppEnvironment.shared.setForegroundActive(true)
     }
 }
 
@@ -76,6 +91,7 @@ final class ControllerViewController: UIViewController {
             .environment(environment.systemData)
             .environment(environment.voiceAssistant)
             .environment(environment.voiceAssistantSettings)
+            .environment(environment.wakeWordController)
         let host = UIHostingController(rootView: root)
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false

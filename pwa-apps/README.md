@@ -6,6 +6,8 @@ This workspace contains three static apps for validating the ExtendReality PWA h
 - **PWA Lab** — diagnostics for Service Worker, Cache Storage, IndexedDB, WebKit media permissions, and ExtendReality host API v3 including spatial-window composition.
 - **Spatial Video** — a spatial online player plus an OPFS/IndexedDB library for user-owned offline media. YouTube content remains online-only and uses the official embedded player.
 
+Spatial Video can optionally connect a Google account with the read-only YouTube scope. It builds a newest-first feed from recent uploads by subscribed channels; the YouTube Data API does not expose the personalized Home recommendations feed. Configure a Google OAuth **Web application** client with the deployed origin (and the local Vite origin when developing), then enter its client ID in Spatial Video settings. The client ID is stored locally, while short-lived access tokens remain in memory and are removed on reload or disconnect.
+
 ## Build
 
 Node.js 22.12 or newer is required.
@@ -24,6 +26,9 @@ dist/
 ├── spatial-board/
 └── spatial-video/
 ```
+
+The same build also refreshes `ExtendRealityPWAStudio/Resources/PWAApps`, which is
+copied into the macOS Studio app bundle as an offline production preview.
 
 Upload the complete directory to the HTTPS origin used during the build. Configure `ExtendRealityPWACatalogURL` as `https://apps.your-domain.example/catalog.json`, regenerate the Xcode project, and open **Web App Store** in the controller.
 

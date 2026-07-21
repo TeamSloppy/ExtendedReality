@@ -1,0 +1,1 @@
+{"name":"Spatial Video","short_name":"Video","description":"A spatial online player and offline library for media you own.","start_url":"/spatial-video/","display":"standalone","background_color":"#000000","theme_color":"#000000","lang":"en","scope":"/spatial-video/","id":"/spatial-video/","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

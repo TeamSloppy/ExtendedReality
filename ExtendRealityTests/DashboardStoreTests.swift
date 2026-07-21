@@ -13,6 +13,7 @@ final class DashboardStoreTests: XCTestCase {
             if case .bookmark = $0.content { return true }
             return false
         }))
+        XCTAssertTrue(store.launchers.contains(where: { $0.content == .app(.maps) }))
         XCTAssertEqual(store.widgets.count, 3)
     }
 
@@ -32,29 +33,101 @@ final class DashboardStoreTests: XCTestCase {
         XCTAssertEqual(bookmark.accent, .green)
     }
 
-    func testArbitraryLauncherCountCreatesAdditionalPages() {
+    func testArbitraryLauncherCountReceivesPersistedPlacements() {
         let store = DashboardStore(defaults: makeDefaults(), storageKey: #function)
 
         for index in 0 ..< 25 {
             XCTAssertTrue(store.addBookmark(title: "Site \(index)", url: "site\(index).example.com"))
         }
 
-        XCTAssertGreaterThanOrEqual(store.pageCount, 4)
-        XCTAssertFalse(store.launcherPage(3).isEmpty)
+        XCTAssertEqual(store.launchers.count, 34)
+        XCTAssertTrue(store.launchers.allSatisfy(\.placement.isPlaced))
     }
 
-    func testPageScrollIsClampedToAvailablePages() {
-        let store = DashboardStore(defaults: makeDefaults(), storageKey: #function)
-        for index in 0 ..< 14 {
-            XCTAssertTrue(store.addBookmark(title: "Site \(index)", url: "site\(index).example.com"))
+    func testMoveScaleAndLayerAreClampedAndPersisted() throws {
+        let defaults = makeDefaults()
+        let key = #function
+        let store = DashboardStore(defaults: defaults, storageKey: key)
+        let item = try XCTUnwrap(store.widgets.first)
+        let previousTopLayer = try XCTUnwrap(store.items.map(\.placement.zIndex).max())
+
+        store.beginArranging(item.id)
+        store.moveSelected(normalizedDelta: CGVector(dx: -10, dy: -10))
+        store.scaleSelected(by: 100)
+        store.endArranging()
+
+        let moved = try XCTUnwrap(store.item(id: item.id))
+        XCTAssertEqual(moved.placement.scale, DashboardPlacement.scaleRange.upperBound)
+        XCTAssertGreaterThan(moved.placement.x, 0)
+        XCTAssertGreaterThan(moved.placement.y, DashboardLayout.reservedTopFraction)
+        XCTAssertGreaterThan(moved.placement.zIndex, previousTopLayer)
+
+        let restored = DashboardStore(defaults: defaults, storageKey: key)
+        XCTAssertEqual(restored.item(id: item.id)?.placement, moved.placement)
+    }
+
+    func testLegacyItemsWithoutPlacementAreMigrated() throws {
+        struct LegacyItem: Codable {
+            let id: UUID
+            let content: DashboardItemContent
         }
 
-        store.consumePageScroll(0.2)
-        XCTAssertEqual(store.selectedPage, 1)
-        store.consumePageScroll(-0.2)
-        XCTAssertEqual(store.selectedPage, 0)
-        store.consumePageScroll(-0.2)
-        XCTAssertEqual(store.selectedPage, 0)
+        let defaults = makeDefaults()
+        let key = #function
+        let id = UUID()
+        defaults.set(
+            try JSONEncoder().encode([LegacyItem(id: id, content: .widget(.health))]),
+            forKey: key
+        )
+
+        let store = DashboardStore(defaults: defaults, storageKey: key)
+
+        XCTAssertTrue(try XCTUnwrap(store.item(id: id)).placement.isPlaced)
+        let persisted = try XCTUnwrap(defaults.data(forKey: key))
+        XCTAssertNotNil(String(data: persisted, encoding: .utf8)?.range(of: "placement"))
+    }
+
+    func testResetLayoutPreservesItemsAndRestoresDefaultPlacement() throws {
+        let store = DashboardStore(defaults: makeDefaults(), storageKey: #function)
+        let item = try XCTUnwrap(store.widgets.first)
+        store.beginArranging(item.id)
+        store.moveSelected(normalizedDelta: CGVector(dx: 0.2, dy: 0.2))
+        store.endArranging()
+
+        store.resetLayout()
+
+        XCTAssertEqual(store.items.count, 12)
+        XCTAssertNotEqual(store.item(id: item.id)?.placement.zIndex, -1)
+    }
+
+    func testDashboardProjectionUsesOnlyRollForStabilization() throws {
+        let item = DashboardItem(
+            content: .widget(.focus),
+            placement: DashboardPlacement(x: 0.25, y: 0.5, scale: 1, zIndex: 0)
+        )
+        let firstPose = HeadPose(yaw: 0, pitch: 0, roll: 12, timestamp: 1)
+        let secondPose = HeadPose(yaw: 40, pitch: -20, roll: 12, timestamp: 2)
+        let firstRotation = DashboardProjection.stabilizationRotation(for: firstPose, isTracking: true)
+        let secondRotation = DashboardProjection.stabilizationRotation(for: secondPose, isTracking: true)
+
+        XCTAssertEqual(firstRotation, -12)
+        XCTAssertEqual(secondRotation, firstRotation)
+        XCTAssertEqual(
+            DashboardProjection.presentation(
+                for: item,
+                in: CGSize(width: 1_920, height: 1_080),
+                rotationDegrees: firstRotation
+            ),
+            DashboardProjection.presentation(
+                for: item,
+                in: CGSize(width: 1_920, height: 1_080),
+                rotationDegrees: secondRotation
+            )
+        )
+        XCTAssertEqual(
+            DashboardProjection.stabilizationRotation(for: firstPose, isTracking: false),
+            0
+        )
     }
 
     func testPWAIsAddedOnceAndPersistsOnDashboard() throws {
@@ -91,6 +164,22 @@ final class DashboardStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(matches.count, 1)
+    }
+
+    func testExistingDashboardReceivesMapsLauncherOnlyOnce() throws {
+        let defaults = makeDefaults()
+        let key = #function
+        let legacyItems = [DashboardItem(content: .app(.browser))]
+        defaults.set(try JSONEncoder().encode(legacyItems), forKey: key)
+
+        let migrated = DashboardStore(defaults: defaults, storageKey: key)
+        XCTAssertEqual(migrated.items.filter { $0.content == .app(.maps) }.count, 1)
+
+        let mapsIndex = try XCTUnwrap(migrated.items.firstIndex(where: { $0.content == .app(.maps) }))
+        migrated.remove(at: IndexSet(integer: mapsIndex))
+        let restored = DashboardStore(defaults: defaults, storageKey: key)
+
+        XCTAssertFalse(restored.items.contains(where: { $0.content == .app(.maps) }))
     }
 
     private func makeDefaults() -> UserDefaults {

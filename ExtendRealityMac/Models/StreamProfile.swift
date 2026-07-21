@@ -41,22 +41,63 @@ struct RemoteStreamEndpoint: Codable, Equatable, Sendable {
     let height: Int
 }
 
+struct RemoteShareableApplication: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let bundleIdentifier: String
+    let processID: Int32
+}
+
+struct RemoteShareableApplicationCatalog: Codable, Equatable, Sendable {
+    let version: Int
+    let applications: [RemoteShareableApplication]
+}
+
+struct RemoteStreamStartRequest: Equatable, Sendable {
+    let layout: StreamLayout
+    let usesVirtualCursor: Bool
+    let applicationID: String?
+}
+
+struct CaptureApplication: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let bundleIdentifier: String
+    let processID: Int32
+    let displayID: CGDirectDisplayID
+    let captureFrame: CGRect
+    let width: Int
+    let height: Int
+
+    var remoteRepresentation: RemoteShareableApplication {
+        RemoteShareableApplication(
+            id: id,
+            name: name,
+            bundleIdentifier: bundleIdentifier,
+            processID: processID
+        )
+    }
+}
+
 struct RemoteStreamSession: Codable, Equatable, Sendable {
     let version: Int
     let layout: StreamLayout
     let streams: [RemoteStreamEndpoint]
     let cursorURL: URL?
+    let audio: SessionAudioConfiguration?
 
     init(
         version: Int,
         layout: StreamLayout,
         streams: [RemoteStreamEndpoint],
-        cursorURL: URL? = nil
+        cursorURL: URL? = nil,
+        audio: SessionAudioConfiguration? = nil
     ) {
         self.version = version
         self.layout = layout
         self.streams = streams
         self.cursorURL = cursorURL
+        self.audio = audio
     }
 }
 

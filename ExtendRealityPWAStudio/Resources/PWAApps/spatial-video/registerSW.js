@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/spatial-video/sw.js', { scope: '/spatial-video/' })})}

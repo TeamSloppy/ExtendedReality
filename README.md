@@ -11,7 +11,7 @@ An iOS 18 spatial workspace for USB-C display glasses, initially targeting an iP
 - Apple Watch controller with gyroscope pointer input, Digital Crown scrolling, Double Tap click, recenter, app launching, and window focus/minimize/close actions.
 - Live `WKWebView` browser surface with a JavaScript cursor bridge.
 - Curated PWA mini-app store with isolated per-app WebKit storage, window/widget launch modes, origin restrictions, age gating, camera/microphone consent, and uninstall cleanup.
-- Photos/Files image and video surface backed by AVFoundation.
+- Photos/Files image and video surface backed by AVFoundation, including spatial photos and on-device Depth Anything V2 + Metal Full SBS generation for local video.
 - YouTube IFrame player, URL parsing, Data API search, and phone-side playback controls.
 - RoyalVNCKit-backed VNC client for macOS Screen Sharing, including authentication, framebuffer updates, pointer, scroll, keyboard, and reconnect controls.
 - Native macOS companion with ScreenCaptureKit capture, single/multi-display layouts, ultrawide composition, and Bonjour-advertised MJPEG streaming.
@@ -48,6 +48,7 @@ Three deployable apps live in [`pwa-apps`](pwa-apps): the offline Excalidraw-bas
 4. Connect motion-capable AirPods and grant Motion access. Use **Reset** to establish the current forward direction; disconnecting the AirPods automatically returns the canvas to head-locked mode.
 5. Direct DisplayPort does not expose a documented XREAL Air v1 IMU channel to iOS. `XREALPoseProvider` remains the boundary for a future supported USB/HID or BLE tracker.
 6. Open the Watch app while the iPhone app is active. Confirm wrist rotation moves the cursor, Digital Crown scrolls the focused surface, and Double Tap activates the click button. Tune pointer sensitivity in the Watch app if needed.
+7. Open a local video in Gallery, choose **AI 3D**, and switch the glasses to Full SBS (3840×1080) within eight seconds. Confirm the two eye views stay synchronized with audio, seeking resets depth history, and critical thermal state returns playback to 2D.
 
 ## Spatial debug website
 
@@ -77,9 +78,16 @@ Run the `ExtendRealityMac` scheme on macOS 15 or newer, or use the Codex **Run**
 
 Press **Start**, grant Screen Recording permission when macOS asks, then open the LAN URL shown in the app. The root page shows the primary stream, `/stream.mjpeg` is the primary MJPEG endpoint, and `/display/<display-id>.mjpeg` addresses individual displays. The service is advertised as `_extend-reality._tcp` through Bonjour.
 
+When the iPhone opens a native Mac session, audio connects automatically: Mac system audio is played through the iPhone's current route (including connected glasses), while the current iPhone/glasses microphone is captured and sent back to the Mac companion. Microphone access is requested on the first connection and both audio directions stop when the last Mac stream window closes. This is scoped to the ExtendReality session and does not install a system-wide Core Audio device.
+
 The MVP stream is intentionally unencrypted HTTP/MJPEG and should only be used on a trusted local network. Creating additional system-level virtual monitors is not available through a supported public macOS app API; the current multi-display mode uses physical displays. A separate signed display-driver strategy needs its own distribution and security design.
 
 ## PWA Studio for macOS
+
+Production builds of PWA Lab, Spatial Board, and Spatial Video are included in the
+`ExtendRealityPWAStudio` app bundle and are available without starting a local server.
+Running `npm run build` in `pwa-apps` refreshes both the deployable `pwa-apps/dist`
+site and the Studio's bundled copies.
 
 `ExtendRealityPWAStudio` is a sandboxed macOS developer tool that renders local PWAs inside a 16:9 glasses-style spatial viewport. It shares the PWA manifest, capability, and spatial-layout models with the iOS host, injects ExtendReality host API v3, supports multi-panel layouts, and exposes fixture permissions and browser console output in a native inspector.
 
@@ -91,7 +99,7 @@ Start one of the Vite development servers in a terminal:
 ./script/run_pwa_dev_server.sh video
 ```
 
-Then run the `ExtendRealityPWAStudio` scheme or use the Codex **Run PWA Studio** action. PWA Lab uses `http://127.0.0.1:5173/pwa-lab/`, Spatial Board uses `http://127.0.0.1:5174/spatial-board/`, Spatial Video uses `http://127.0.0.1:5175/spatial-video/`, and Vite HMR updates the embedded `WKWebView` as source files change.
+Then run the `ExtendRealityPWAStudio` scheme or use the Codex **Run PWA Studio** action, select **Custom URL**, and enter the matching local address. PWA Lab uses `http://127.0.0.1:5173/pwa-lab/`, Spatial Board uses `http://127.0.0.1:5174/spatial-board/`, Spatial Video uses `http://127.0.0.1:5175/spatial-video/`, and Vite HMR updates the embedded `WKWebView` as source files change.
 
 For another PWA, choose **Open PWA Project Directory…** in the Studio. The app stores a read-only security-scoped bookmark, reads available scripts from `package.json`, and lets you select or edit the launch command. **Open Terminal** copies a safely quoted `cd <directory> && <command>` value and opens Terminal in that directory; paste the command to run it, then enter the preview URL in the toolbar. The sandboxed Studio never executes arbitrary shell commands itself.
 

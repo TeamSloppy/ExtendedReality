@@ -1,5 +1,6 @@
 import CoreGraphics
 import ImageIO
+import Photos
 import UIKit
 import XCTest
 @testable import ExtendReality
@@ -37,7 +38,7 @@ final class WindowProjectionTests: XCTestCase {
         XCTAssertLessThan(far.height, near.height)
     }
 
-    func testHeadRollRotatesOffCenterWindowAroundViewportCenter() {
+    func testHeadRollDoesNotMixHorizontalAndVerticalProjectionAxes() {
         let viewport = CGRect(x: 0, y: 0, width: 1920, height: 1080)
         var transform = WindowTransform3DoF.centered
         transform.yaw = 12
@@ -48,10 +49,28 @@ final class WindowProjectionTests: XCTestCase {
             headPose: HeadPose(yaw: 0, pitch: 0, roll: 20, timestamp: 1)
         )
 
-        XCTAssertNotEqual(rolled.midY, neutral.midY, accuracy: 0.001)
+        XCTAssertEqual(rolled.midX, neutral.midX, accuracy: 0.001)
+        XCTAssertEqual(rolled.midY, neutral.midY, accuracy: 0.001)
     }
 
-    func testTrackedVoiceAssistantLivesBelowNeutralViewAndCentersWhenLookingDown() throws {
+    func testHeadYawMovesWindowOnlyAlongHorizontalAxisWhenRolled() {
+        let viewport = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let neutral = WindowProjection.frame(
+            for: .centered,
+            in: viewport,
+            headPose: HeadPose(yaw: 0, pitch: 0, roll: 20, timestamp: 1)
+        )
+        let turned = WindowProjection.frame(
+            for: .centered,
+            in: viewport,
+            headPose: HeadPose(yaw: -10, pitch: 0, roll: 20, timestamp: 2)
+        )
+
+        XCTAssertLessThan(turned.midX, neutral.midX)
+        XCTAssertEqual(turned.midY, neutral.midY, accuracy: 0.001)
+    }
+
+    func testTrackedVoiceAssistantSitsInLowerForwardViewAndCentersWhenLookingDown() throws {
         let viewport = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
         let anchor = VoiceAssistantPlacement.anchor(below: .identity)
         let neutral = try XCTUnwrap(
@@ -76,7 +95,8 @@ final class WindowProjectionTests: XCTestCase {
             )
         )
 
-        XCTAssertGreaterThan(neutral.y, viewport.maxY)
+        XCTAssertGreaterThan(neutral.y, viewport.midY)
+        XCTAssertLessThan(neutral.y, viewport.maxY)
         XCTAssertEqual(lookingDown.x, viewport.midX, accuracy: 0.001)
         XCTAssertEqual(lookingDown.y, viewport.midY, accuracy: 0.001)
     }
@@ -240,6 +260,71 @@ final class WindowProjectionTests: XCTestCase {
         XCTAssertEqual(panels.count, 4)
         XCTAssertTrue(panels.allSatisfy { bounds.contains($0.frame) })
     }
+
+    func testStackProjectionCentersNonOverlappingAppsWithCommonDepthAndPitch() throws {
+        let browser = WorkspaceWindow(title: "Browser", source: .browser(url: "https://example.com"))
+        var youtube = WorkspaceWindow(title: "YouTube", source: .youtube(videoID: nil))
+        youtube.appTransform.scale = 0.8
+        let windows = [browser, youtube]
+        let stackTransform = WorkspaceStackTransform(
+            centerYaw: 7,
+            pitch: -3,
+            virtualDistance: 1.25
+        )
+
+        let presentations = WorkspaceLayoutProjection.presentations(
+            windows: windows,
+            layouts: [
+                browser.id: .defaultLayout(for: browser),
+                youtube.id: .youtube,
+            ],
+            layoutMode: .stack,
+            stackOrder: windows.map(\.id),
+            stackTransform: stackTransform,
+            headPose: .identity
+        )
+        let presentedBrowser = try XCTUnwrap(presentations[browser.id])
+        let presentedYouTube = try XCTUnwrap(presentations[youtube.id])
+        let viewport = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
+        let browserFrame = WindowProjection.frame(
+            for: presentedBrowser.window.transform,
+            in: viewport
+        )
+        let youtubePanels = SpatialWindowCompositor.project(
+            window: presentedYouTube.window,
+            layout: .youtube,
+            in: viewport
+        )
+        let youtubeFrame = SpatialWindowCompositor.boundingFrame(for: youtubePanels)
+
+        XCTAssertLessThan(browserFrame.maxX, youtubeFrame.minX)
+        XCTAssertEqual(presentedBrowser.window.appTransform.pitch, stackTransform.pitch)
+        XCTAssertEqual(presentedYouTube.window.appTransform.pitch, stackTransform.pitch)
+        XCTAssertEqual(
+            presentedBrowser.window.appTransform.virtualDistance,
+            stackTransform.virtualDistance
+        )
+        XCTAssertEqual(
+            presentedYouTube.window.appTransform.virtualDistance,
+            stackTransform.virtualDistance
+        )
+        XCTAssertEqual(presentedBrowser.stackIndex, 0)
+        XCTAssertEqual(presentedYouTube.stackIndex, 1)
+
+        let leftBounds = WorkspaceLayoutProjection.horizontalBounds(
+            for: browser,
+            layout: .defaultLayout(for: browser),
+            rootDistance: stackTransform.virtualDistance
+        )
+        let rightBounds = WorkspaceLayoutProjection.horizontalBounds(
+            for: youtube,
+            layout: .youtube,
+            rootDistance: stackTransform.virtualDistance
+        )
+        let combinedMin = presentedBrowser.window.appTransform.yaw + leftBounds.lowerBound
+        let combinedMax = presentedYouTube.window.appTransform.yaw + rightBounds.upperBound
+        XCTAssertEqual((combinedMin + combinedMax) / 2, stackTransform.centerYaw, accuracy: 0.001)
+    }
 }
 
 final class SpatialPhotoDecoderTests: XCTestCase {
@@ -276,6 +361,18 @@ final class SpatialPhotoDecoderTests: XCTestCase {
 
 @MainActor
 final class MediaSessionTests: XCTestCase {
+    func testMediaLibraryFiltersAcceptExpectedAssetTypes() {
+        XCTAssertTrue(MediaLibraryFilter.all.includes(.image))
+        XCTAssertTrue(MediaLibraryFilter.all.includes(.video))
+        XCTAssertFalse(MediaLibraryFilter.all.includes(.audio))
+
+        XCTAssertTrue(MediaLibraryFilter.photos.includes(.image))
+        XCTAssertFalse(MediaLibraryFilter.photos.includes(.video))
+
+        XCTAssertFalse(MediaLibraryFilter.videos.includes(.image))
+        XCTAssertTrue(MediaLibraryFilter.videos.includes(.video))
+    }
+
     func testOrdinaryPhotoUsesTwoDimensionalPresentation() throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
             UIColor.orange.setFill()

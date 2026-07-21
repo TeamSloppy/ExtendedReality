@@ -68,6 +68,9 @@ struct StreamDetailView: View {
                     Text(viewerSummary)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                    Label(audioSummary, systemImage: "waveform")
+                        .font(.caption2)
+                        .foregroundStyle(audioIsConnected ? Color.green : Color.secondary)
                 }
             }
         }
@@ -119,6 +122,19 @@ struct StreamDetailView: View {
     private var viewerSummary: String {
         let count = store.connectedViewerCount
         return count == 1 ? "1 viewer" : "\(count) viewers"
+    }
+
+    private var audioIsConnected: Bool {
+        store.connectedAudioPlaybackCount > 0 || store.connectedMicrophoneCount > 0
+    }
+
+    private var audioSummary: String {
+        switch (store.connectedAudioPlaybackCount > 0, store.connectedMicrophoneCount > 0) {
+        case (true, true): "Glasses audio + microphone"
+        case (true, false): "Glasses audio connected"
+        case (false, true): "Glasses microphone connected"
+        case (false, false): "Audio waiting for session"
+        }
     }
 
     private var failurePresented: Binding<Bool> {

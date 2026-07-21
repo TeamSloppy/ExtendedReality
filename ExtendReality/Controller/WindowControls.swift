@@ -1,15 +1,123 @@
+import AppIntents
 import PhotosUI
 import SwiftUI
+import UIKit
 
 struct BrowserControlsView: View {
+    @Bindable var browser: BrowserWindowSession
+    @FocusState private var isAddressFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(browser.tabs) { tab in
+                            HStack(spacing: 2) {
+                                Button {
+                                    browser.selectTab(tab.id)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: tab.session.isLoading ? "circle.dotted" : "globe")
+                                        Text(tab.displayTitle)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(maxWidth: 150)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(tab.id == browser.activeTabID ? .isSelected : [])
+
+                                Button("Close \(tab.displayTitle)", systemImage: "xmark") {
+                                    browser.closeTab(tab.id)
+                                }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.plain)
+                                .disabled(browser.tabs.count == 1)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(tab.id == browser.activeTabID ? .primary : .secondary)
+                            .padding(.horizontal, 9)
+                            .frame(height: 32)
+                            .background(
+                                tab.id == browser.activeTabID
+                                    ? Color.accentColor.opacity(0.18)
+                                    : Color.secondary.opacity(0.1),
+                                in: Capsule()
+                            )
+                            .accessibilityIdentifier("browser.tab.\(tab.id.uuidString)")
+                        }
+                    }
+                }
+
+                Text(browser.tabCountLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                Button("New Tab", systemImage: "plus") {
+                    browser.addTab()
+                }
+                .labelStyle(.iconOnly)
+                .disabled(!browser.canCreateTab)
+                .accessibilityIdentifier("browser.newTab")
+            }
+
+            browserNavigationBar
+
+            if browser.activeSession.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            if let error = browser.activeSession.lastErrorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .onChange(of: browser.addressFocusRequest) { _, _ in
+            isAddressFocused = true
+        }
+    }
+
+    private var browserNavigationBar: some View {
+        HStack {
+            Button("Back", systemImage: "chevron.backward") { browser.goBack() }
+                .disabled(!browser.activeSession.canGoBack)
+            Button("Forward", systemImage: "chevron.forward") { browser.goForward() }
+                .disabled(!browser.activeSession.canGoForward)
+            TextField(
+                "Address or search",
+                text: Binding(
+                    get: { browser.activeSession.address },
+                    set: { browser.activeSession.address = $0 }
+                )
+            )
+            .textFieldStyle(.roundedBorder)
+            .textInputAutocapitalization(.never)
+            .keyboardType(.URL)
+            .focused($isAddressFocused)
+            .onSubmit { browser.loadActive() }
+            .accessibilityIdentifier("browser.address")
+            Button("Go", systemImage: "arrow.right.circle.fill") { browser.loadActive() }
+                .labelStyle(.iconOnly)
+            Button("Reload", systemImage: "arrow.clockwise") { browser.reloadActive() }
+                .labelStyle(.iconOnly)
+                .accessibilityIdentifier("browser.reload")
+        }
+    }
+}
+
+struct WebSessionControlsView: View {
     @Bindable var session: BrowserSession
 
     var body: some View {
         VStack(spacing: 10) {
             HStack {
-                Button("Back", systemImage: "chevron.backward") { session.webView.goBack() }
+                Button("Back", systemImage: "chevron.backward") { session.goBack() }
                     .disabled(!session.canGoBack)
-                Button("Forward", systemImage: "chevron.forward") { session.webView.goForward() }
+                Button("Forward", systemImage: "chevron.forward") { session.goForward() }
                     .disabled(!session.canGoForward)
                 TextField("Address or search", text: $session.address)
                     .textFieldStyle(.roundedBorder)
@@ -36,6 +144,14 @@ struct MediaControlsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
+                if !session.isShowingPhotoLibrary {
+                    Button("Back to Library", systemImage: "chevron.backward") {
+                        session.showPhotoLibrary()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("gallery.showLibrary")
+                }
+
                 PhotosPicker(
                     selection: $selectedPhoto,
                     matching: .any(of: [.images, .videos]),
@@ -56,9 +172,29 @@ struct MediaControlsView: View {
                 }
             }
 
-            if session.isSpatialPhoto {
+            if session.isShowingPhotoLibrary {
+                Picker(
+                    "Media filter",
+                    selection: Binding(
+                        get: { session.photoLibraryFilter },
+                        set: { session.setPhotoLibraryFilter($0) }
+                    )
+                ) {
+                    ForEach(MediaLibraryFilter.allCases) { filter in
+                        Label(filter.title, systemImage: filter.systemImage)
+                            .tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("gallery.mediaFilter")
+            }
+
+            if session.isSpatialPhoto || session.isVideo {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Spatial photo detected", systemImage: "view.3d")
+                    Label(
+                        session.isSpatialPhoto ? "Spatial photo detected" : "Stereo presentation",
+                        systemImage: session.isSpatialPhoto ? "view.3d" : "sparkles.rectangle.stack"
+                    )
                         .font(.headline)
                         .foregroundStyle(.cyan)
 
@@ -69,7 +205,7 @@ struct MediaControlsView: View {
                             set: { session.setPresentationMode($0) }
                         )
                     ) {
-                        ForEach(MediaPresentationMode.allCases) { mode in
+                        ForEach(session.availablePresentationModes) { mode in
                             Label(mode.title, systemImage: mode.systemImage)
                                 .tag(mode)
                         }
@@ -77,10 +213,45 @@ struct MediaControlsView: View {
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("gallery.presentationMode")
 
-                    if session.presentationMode == .spatial3D {
+                    if session.presentationMode == .sourceStereo {
                         Text("3D uses the full glasses display. Enable Full SBS (3840×1080) on the XREAL glasses.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+
+                    if session.presentationMode == .generatedStereo {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("3D strength")
+                                Spacer()
+                                Text(session.stereoDisparityPercent, format: .number.precision(.fractionLength(2)))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { session.stereoDisparityPercent },
+                                    set: { session.setStereoDisparityPercent($0) }
+                                ),
+                                in: StereoDepthSettings.disparityPercentRange
+                            )
+                            .accessibilityIdentifier("gallery.stereoStrength")
+                            Text("Enable Full SBS (3840×1080) on the XREAL glasses. Depth updates adapt automatically if the iPhone gets warm.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if session.generatedStereoStatus != .idle {
+                        Label(
+                            session.generatedStereoStatus.title,
+                            systemImage: session.generatedStereoStatus.systemImage
+                        )
+                        .font(.caption)
+                        .foregroundStyle(
+                            session.generatedStereoStatus.isError ? Color.orange : Color.cyan
+                        )
+                        .accessibilityIdentifier("gallery.generatedStereoStatus")
                     }
                 }
             }
@@ -131,6 +302,12 @@ struct YouTubeControlsView: View {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.orange)
+            }
+            if let errorMessage = session.playerErrorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !session.results.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -232,12 +409,120 @@ struct VNCControlsView: View {
     }
 }
 
+struct MapsControlsView: View {
+    @Bindable var session: MapsSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Apple Maps route", systemImage: "map.fill")
+                    .font(.headline)
+                Spacer()
+                Picker("Travel mode", selection: $session.transport) {
+                    ForEach(MapsTransportMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            Toggle("Start from current location", isOn: $session.usesCurrentLocation)
+
+            if !session.usesCurrentLocation {
+                TextField("Starting point", text: $session.sourceQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(.fullStreetAddress)
+                    .submitLabel(.next)
+                    .accessibilityIdentifier("maps.source")
+            }
+
+            HStack(spacing: 10) {
+                TextField("Where to?", text: $session.destinationQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(.fullStreetAddress)
+                    .submitLabel(.route)
+                    .onSubmit { Task { await session.planRoute() } }
+                    .accessibilityIdentifier("maps.destination")
+
+                Button("Route", systemImage: "point.topleft.down.to.point.bottomright.curvepath") {
+                    Task { await session.planRoute() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.cyan)
+                .disabled(session.destinationQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || session.isLoading)
+                .accessibilityIdentifier("maps.planRoute")
+            }
+
+            if session.isLoading {
+                ProgressView("Building route with Apple Maps…")
+                    .controlSize(.small)
+            }
+
+            if let errorMessage = session.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            if let summary = session.routeSummary {
+                HStack(spacing: 10) {
+                    Label(summary, systemImage: session.transport.systemImage)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if let shareURL = session.shareURL {
+                        ShareLink(item: shareURL) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("maps.shareRoute")
+                    }
+                    Button("Start in Maps", systemImage: "arrow.triangle.turn.up.right.diamond.fill") {
+                        session.openInAppleMaps()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("maps.openInAppleMaps")
+                }
+            } else {
+                Text("Choose a destination here, or share a route from Apple Maps to ExtendReality.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+struct MapsRoutePlannerSheet: View {
+    let session: MapsSession
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                MapsControlsView(session: session)
+                    .padding()
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Route")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(HeadPoseController.self) private var headPose
     @Environment(SystemDataStore.self) private var systemData
     @Environment(VoiceAssistantSettings.self) private var voiceSettings
     @Environment(VoiceAssistantCoordinator.self) private var voiceAssistant
+    @Environment(WakeWordController.self) private var wakeWordController
     @AppStorage("youtube.apiKey") private var youtubeAPIKey = ""
     @AppStorage(RemoteDisplayLayout.defaultsKey) private var remoteDisplayLayout = RemoteDisplayLayout.single
 
@@ -345,6 +630,20 @@ struct SettingsView: View {
             }
 
             Toggle("Share active window", isOn: $settings.sharesActiveContext)
+            Toggle("Listen for “Sloppy”", isOn: $settings.wakeWordEnabled)
+                .disabled(!settings.isEnabled)
+                .accessibilityIdentifier("voiceAssistant.wakeWordEnabled")
+            Label(wakeWordController.state.statusText, systemImage: wakeWordController.state.systemImage)
+                .font(.caption)
+                .foregroundStyle(wakeWordController.state.isListening ? .green : .secondary)
+            if wakeWordController.state.opensSystemSettings {
+                Button("Open System Settings", systemImage: "gear") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+            }
+            SiriTipView(intent: StartSloppyVoiceModeIntent())
+            ShortcutsLink()
             Button("Test Sloppy Connection", systemImage: "network") {
                 Task { await voiceAssistant.testConnection() }
             }
@@ -354,7 +653,7 @@ struct SettingsView: View {
         } header: {
             Text("Sloppy Assistant")
         } footer: {
-            Text("Voice questions are sent to the selected Sloppy agent. When active-window sharing is enabled, ExtendReality also attaches a compressed screenshot and focused browser text.")
+            Text("When enabled, ExtendReality listens on device for ‘Sloppy’ only while the app is active. Say the wake word, wait for Voice Mode to show Listening, then speak your request. Siri and Vocal Shortcuts remain available as optional alternatives.")
         }
     }
 
@@ -391,7 +690,7 @@ private struct HeadPoseReadout: View {
 #if DEBUG
 #Preview("Browser Controls") {
     BrowserControlsView(
-        session: BrowserSession(initialURL: "https://www.apple.com", loadsContent: false)
+        browser: BrowserWindowSession(initialURL: "https://www.apple.com", loadsContent: false)
     )
     .padding()
 }

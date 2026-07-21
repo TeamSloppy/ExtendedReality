@@ -7,7 +7,11 @@ struct SurfaceHostView: View {
     var body: some View {
         switch window.source {
         case .browser(let url):
-            BrowserSurfaceView(session: environment.surfaces.browser(for: window.id, initialURL: url))
+            TabbedBrowserSurfaceView(
+                browser: environment.surfaces.browser(for: window.id, initialURL: url)
+            )
+        case .maps:
+            MapsSurfaceView(session: environment.surfaces.mapsSession(for: window.id))
         case .pwa(let installation, let displayMode):
             BrowserSurfaceView(
                 session: environment.surfaces.pwa(
@@ -32,6 +36,12 @@ struct SurfaceHostView: View {
                     session: environment.surfaces.remoteDesktop(for: window.id, initialHost: host)
                 )
             }
+        case .macCapture:
+            ContentUnavailableView(
+                "Mac Direct surface",
+                systemImage: "display",
+                description: Text("This local capture surface is available in ExtendReality Mac Direct Mode.")
+            )
         }
     }
 }

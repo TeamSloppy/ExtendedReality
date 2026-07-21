@@ -28,6 +28,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ExtendReality sends display streams to your iPhone on the local network.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>ExtendReality uses motion data from compatible AirPods as a fallback for Direct Mode head tracking.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>ExtendReality streams the displays you select to your spatial workspace.</string>
 </dict>

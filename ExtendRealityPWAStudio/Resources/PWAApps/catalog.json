@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "apps": [
+    {
+      "id": "com.extendreality.spatial-board",
+      "name": "Spatial Board",
+      "summary": "An offline-first spatial whiteboard powered by Excalidraw.",
+      "developer": "ExtendReality",
+      "version": "1.0.0",
+      "launchURL": "https://apps.example.com/spatial-board/",
+      "universalLink": "https://apps.example.com/spatial-board/",
+      "allowedOrigins": [
+        "https://apps.example.com"
+      ],
+      "displayModes": [
+        "window",
+        "widget"
+      ],
+      "requestedCapabilities": [],
+      "minimumAge": 4,
+      "accentHex": "#0D9488"
+    },
+    {
+      "id": "com.extendreality.pwa-lab",
+      "name": "PWA Lab",
+      "summary": "Diagnose offline storage, media permissions, and ExtendReality host APIs.",
+      "developer": "ExtendReality",
+      "version": "1.0.0",
+      "launchURL": "https://apps.example.com/pwa-lab/",
+      "universalLink": "https://apps.example.com/pwa-lab/",
+      "allowedOrigins": [
+        "https://apps.example.com"
+      ],
+      "displayModes": [
+        "window",
+        "widget"
+      ],
+      "requestedCapabilities": [
+        "camera",
+        "microphone",
+        "location",
+        "health",
+        "focusStatus",
+        "spatialWindows"
+      ],
+      "minimumAge": 4,
+      "accentHex": "#22C55E"
+    },
+    {
+      "id": "com.extendreality.spatial-video",
+      "name": "Spatial Video",
+      "summary": "Watch online videos in spatial panels and keep permitted media offline.",
+      "developer": "ExtendReality",
+      "version": "1.0.0",
+      "launchURL": "https://apps.example.com/spatial-video/",
+      "universalLink": "https://apps.example.com/spatial-video/",
+      "allowedOrigins": [
+        "https://apps.example.com"
+      ],
+      "displayModes": [
+        "window",
+        "widget"
+      ],
+      "requestedCapabilities": [
+        "spatialWindows"
+      ],
+      "minimumAge": 13,
+      "accentHex": "#E11D48"
+    }
+  ]
+}

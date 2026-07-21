@@ -18,6 +18,19 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.vladprusakov.ExtendReality.maps</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>extendreality</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>ExtendRealityPWACatalogURL</key>
@@ -45,15 +58,15 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>ExtendReality uses your location while the app is open to provide location-aware spatial apps.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>ExtendReality records your voice when you invoke Sloppy Assistant and lets you grant selected web apps microphone access.</string>
+	<string>ExtendReality can listen on device for the Sloppy wake word while the app is open, record your Voice Mode requests, and let you grant selected web apps microphone access.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>ExtendReality displays photos and videos you select in the glasses workspace.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>ExtendReality saves screenshots and recordings of the glasses display to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ExtendReality displays your photo and video library in the glasses workspace.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>ExtendReality converts your voice into text for local Sloppy Assistant input.</string>
+	<string>ExtendReality uses on-device speech recognition to detect the Sloppy wake word while the app is open and to transcribe local Voice Mode input.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -10,8 +10,12 @@ struct WatchControlView: View {
         NavigationStack {
             VStack(spacing: 7) {
                 statusHeader
-                pointerButton
-                clickButton
+                if let playback = controller.activePlayback {
+                    playbackControls(playback)
+                } else {
+                    pointerButton
+                    clickButton
+                }
                 actionRow
             }
             .padding(.horizontal, 8)
@@ -106,6 +110,42 @@ struct WatchControlView: View {
         .disabled(!controller.isReachable || controller.activeWindow == nil)
     }
 
+    private func playbackControls(_ playback: WatchPlaybackState) -> some View {
+        VStack(spacing: 5) {
+            Text(playback.isPlaying ? "Now playing" : "Video paused")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 7) {
+                Button {
+                    controller.seekPlayback(seconds: -10)
+                } label: {
+                    Image(systemName: "gobackward.10")
+                }
+                .accessibilityLabel("Back 10 seconds")
+
+                Button {
+                    controller.togglePlayback()
+                } label: {
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.headline)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.cyan)
+                .accessibilityLabel(playback.isPlaying ? "Pause video" : "Play video")
+
+                Button {
+                    controller.seekPlayback(seconds: 10)
+                } label: {
+                    Image(systemName: "goforward.10")
+                }
+                .accessibilityLabel("Forward 10 seconds")
+            }
+            .buttonStyle(.bordered)
+        }
+        .disabled(!controller.isReachable)
+    }
+
     private var actionRow: some View {
         HStack(spacing: 6) {
             Button {
@@ -168,6 +208,7 @@ private struct RemoteMenuView: View {
 
             Section("Open app") {
                 appButton(title: "Browser", symbol: "safari", kind: "browser")
+                appButton(title: "Maps", symbol: "map.fill", kind: "maps")
                 appButton(title: "Gallery", symbol: "photo.on.rectangle.angled", kind: "gallery")
                 appButton(title: "YouTube", symbol: "play.rectangle.fill", kind: "youtube")
                 appButton(title: "Mac", symbol: "desktopcomputer", kind: "remoteDesktop")
@@ -196,6 +237,7 @@ private struct RemoteMenuView: View {
     private func symbol(for kind: String) -> String {
         switch kind {
         case "browser": "safari"
+        case "maps": "map.fill"
         case "gallery": "photo.on.rectangle.angled"
         case "youtube": "play.rectangle.fill"
         default: "desktopcomputer"
@@ -226,6 +268,10 @@ private struct WindowActionsView: View {
 #if DEBUG
 #Preview("Watch Controller") {
     WatchControlView(controller: .preview())
+}
+
+#Preview("Watch Video Controls") {
+    WatchControlView(controller: .preview(showsPlayback: true))
 }
 
 #Preview("Watch Apps and Windows") {

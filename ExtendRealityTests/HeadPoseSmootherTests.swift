@@ -43,4 +43,16 @@ final class HeadPoseSmootherTests: XCTestCase {
 
         XCTAssertEqual(smoother.filter(sample), sample)
     }
+
+    func testPoseOffsetUsesShortestPathAcrossWrapBoundary() {
+        let pose = HeadPose(yaw: -179, pitch: 8, roll: -4, timestamp: 2)
+        let reference = HeadPose(yaw: 179, pitch: 3, roll: 2, timestamp: 1)
+
+        let offset = pose.offset(relativeTo: reference)
+
+        XCTAssertEqual(offset.yaw, 2)
+        XCTAssertEqual(offset.pitch, 5)
+        XCTAssertEqual(offset.roll, -6)
+        XCTAssertEqual(offset.timestamp, pose.timestamp)
+    }
 }

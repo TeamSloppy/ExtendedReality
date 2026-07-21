@@ -65,6 +65,7 @@ final class StudioWebSession: NSObject, WKNavigationDelegate, WKUIDelegate {
     @ObservationIgnored private let dataHandler: StudioReplyMessageHandler
     @ObservationIgnored private let windowHandler: StudioReplyMessageHandler?
     @ObservationIgnored private let consoleHandler: StudioConsoleMessageHandler
+    @ObservationIgnored private let bundledResourceHandler: BundledPWAResourceHandler
 
     init(
         isPrimary: Bool,
@@ -85,6 +86,12 @@ final class StudioWebSession: NSObject, WKNavigationDelegate, WKUIDelegate {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.websiteDataStore = websiteDataStore
+        let bundledResourceHandler = BundledPWAResourceHandler()
+        self.bundledResourceHandler = bundledResourceHandler
+        configuration.setURLSchemeHandler(
+            bundledResourceHandler,
+            forURLScheme: BundledPWAResources.scheme
+        )
 
         let dataHandler = StudioReplyMessageHandler(kind: .data)
         self.dataHandler = dataHandler
@@ -120,7 +127,7 @@ final class StudioWebSession: NSObject, WKNavigationDelegate, WKUIDelegate {
             )
         )
 
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        webView = StudioInteractiveWebView(frame: .zero, configuration: configuration)
         super.init()
 
         dataHandler.session = self
@@ -128,7 +135,7 @@ final class StudioWebSession: NSObject, WKNavigationDelegate, WKUIDelegate {
         consoleHandler.session = self
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsBackForwardNavigationGestures = false
         webView.isInspectable = true
     }
 

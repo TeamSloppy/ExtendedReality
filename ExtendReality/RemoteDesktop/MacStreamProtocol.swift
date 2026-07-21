@@ -13,22 +13,37 @@ struct MacStreamEndpoint: Codable, Equatable, Sendable {
     }
 }
 
+struct MacShareableApplication: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let bundleIdentifier: String
+    let processID: Int32
+}
+
+struct MacShareableApplicationCatalog: Codable, Equatable, Sendable {
+    let version: Int
+    let applications: [MacShareableApplication]
+}
+
 struct MacStreamSession: Codable, Equatable, Sendable {
     let version: Int
     let layout: RemoteDisplayLayout
     let streams: [MacStreamEndpoint]
     let cursorURL: URL?
+    let audio: SessionAudioConfiguration?
 
     init(
         version: Int,
         layout: RemoteDisplayLayout,
         streams: [MacStreamEndpoint],
-        cursorURL: URL? = nil
+        cursorURL: URL? = nil,
+        audio: SessionAudioConfiguration? = nil
     ) {
         self.version = version
         self.layout = layout
         self.streams = streams
         self.cursorURL = cursorURL
+        self.audio = audio
     }
 }
 

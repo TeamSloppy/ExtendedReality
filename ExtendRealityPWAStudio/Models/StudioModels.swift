@@ -4,6 +4,7 @@ import Foundation
 enum StudioPreset: String, CaseIterable, Identifiable {
     case pwaLab
     case spatialBoard
+    case spatialVideo
     case custom
 
     var id: String { rawValue }
@@ -12,6 +13,7 @@ enum StudioPreset: String, CaseIterable, Identifiable {
         switch self {
         case .pwaLab: "PWA Lab"
         case .spatialBoard: "Spatial Board"
+        case .spatialVideo: "Spatial Video"
         case .custom: "Custom URL"
         }
     }
@@ -20,6 +22,7 @@ enum StudioPreset: String, CaseIterable, Identifiable {
         switch self {
         case .pwaLab: "Host API and storage diagnostics"
         case .spatialBoard: "Offline spatial whiteboard"
+        case .spatialVideo: "Spatial media player and library"
         case .custom: "Attach to another local server"
         }
     }
@@ -28,14 +31,16 @@ enum StudioPreset: String, CaseIterable, Identifiable {
         switch self {
         case .pwaLab: "testtube.2"
         case .spatialBoard: "pencil.and.outline"
+        case .spatialVideo: "play.rectangle.on.rectangle"
         case .custom: "link"
         }
     }
 
     var defaultAddress: String {
         switch self {
-        case .pwaLab: "http://127.0.0.1:5173/pwa-lab/"
-        case .spatialBoard: "http://127.0.0.1:5174/spatial-board/"
+        case .pwaLab: BundledPWAResources.appURL(path: "pwa-lab").absoluteString
+        case .spatialBoard: BundledPWAResources.appURL(path: "spatial-board").absoluteString
+        case .spatialVideo: BundledPWAResources.appURL(path: "spatial-video").absoluteString
         case .custom: "http://127.0.0.1:5173/"
         }
     }
@@ -44,6 +49,7 @@ enum StudioPreset: String, CaseIterable, Identifiable {
         switch self {
         case .pwaLab: "./script/run_pwa_dev_server.sh lab"
         case .spatialBoard: "./script/run_pwa_dev_server.sh board"
+        case .spatialVideo: "./script/run_pwa_dev_server.sh video"
         case .custom: nil
         }
     }
@@ -51,7 +57,18 @@ enum StudioPreset: String, CaseIterable, Identifiable {
     var defaultCapabilities: Set<PWACapability> {
         switch self {
         case .pwaLab: Set(PWACapability.allCases)
-        case .spatialBoard, .custom: []
+        case .spatialBoard, .spatialVideo, .custom: []
+        }
+    }
+
+    var isBundled: Bool { self != .custom }
+
+    var bundledPath: String {
+        switch self {
+        case .pwaLab: "pwa-lab"
+        case .spatialBoard: "spatial-board"
+        case .spatialVideo: "spatial-video"
+        case .custom: ""
         }
     }
 }
@@ -154,7 +171,7 @@ struct StudioOriginPolicy {
 
     init(baseURL: URL) throws {
         guard let scheme = baseURL.scheme?.lowercased(),
-              ["http", "https"].contains(scheme),
+              StudioURL.supportedSchemes.contains(scheme),
               let host = baseURL.host?.lowercased() else {
             throw StudioHostError.invalidURL
         }
@@ -172,6 +189,8 @@ struct StudioOriginPolicy {
 }
 
 enum StudioURL {
+    static let supportedSchemes = ["http", "https", BundledPWAResources.scheme]
+
     static func resolve(_ rawValue: String, displayMode: PWADisplayMode) throws -> URL {
         var rawValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !rawValue.contains("://") {
@@ -179,8 +198,10 @@ enum StudioURL {
         }
         guard let baseURL = URL(string: rawValue),
               let scheme = baseURL.scheme?.lowercased(),
-              ["http", "https"].contains(scheme),
+              supportedSchemes.contains(scheme),
               baseURL.host != nil,
+              scheme != BundledPWAResources.scheme
+                || baseURL.host?.lowercased() == BundledPWAResources.host,
               var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw StudioHostError.invalidURL
         }
@@ -188,6 +209,9 @@ enum StudioURL {
         items.removeAll { $0.name == "extendDisplayMode" }
         items.append(URLQueryItem(name: "extendDisplayMode", value: displayMode.rawValue))
         components.queryItems = items
+        if scheme == BundledPWAResources.scheme, !components.path.hasSuffix("/") {
+            components.path += "/"
+        }
         guard let url = components.url else { throw StudioHostError.invalidURL }
         return url
     }
@@ -207,6 +231,16 @@ struct StudioWindowTransform: Equatable {
     }
 }
 
+struct StudioCameraTransform: Equatable {
+    var yaw = 0.0
+    var pitch = 0.0
+
+    mutating func clamp() {
+        yaw = yaw.clamped(to: -42 ... 42)
+        pitch = pitch.clamped(to: -24 ... 24)
+    }
+}
+
 struct StudioProjectedPanel: Identifiable, Equatable {
     let descriptor: SpatialPanelDescriptor
     let frame: CGRect
@@ -218,6 +252,7 @@ enum StudioProjection {
     static func project(
         layout: SpatialAppLayout,
         transform: StudioWindowTransform,
+        camera: StudioCameraTransform = StudioCameraTransform(),
         in viewport: CGRect
     ) -> [StudioProjectedPanel] {
         layout.panels.map { panel in
@@ -225,10 +260,10 @@ enum StudioProjection {
             let distance = (transform.distance + placement.depth * transform.scale)
                 .clamped(to: WindowTransform3DoF.virtualDistanceRange)
             let centerX = viewport.midX
-                + CGFloat((transform.yaw + placement.yaw * transform.scale) / 42)
+                + CGFloat((transform.yaw + placement.yaw * transform.scale - camera.yaw) / 42)
                 * viewport.width * 0.52
             let centerY = viewport.midY
-                - CGFloat((transform.pitch + placement.pitch * transform.scale) / 24)
+                - CGFloat((transform.pitch + placement.pitch * transform.scale - camera.pitch) / 24)
                 * viewport.height * 0.44
             let width = viewport.width * CGFloat(placement.width * transform.scale / distance)
             let height = viewport.height * CGFloat(placement.height * transform.scale / distance)

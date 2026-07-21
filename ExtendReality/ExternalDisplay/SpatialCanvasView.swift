@@ -6,60 +6,73 @@ struct SpatialCanvasView: View {
 
     let environment: AppEnvironment
     @Environment(WorkspaceStore.self) private var workspace
+    @Environment(DashboardStore.self) private var dashboard
     @Environment(InputRouter.self) private var inputRouter
     @Environment(HeadPoseController.self) private var headPose
     @Environment(VoiceAssistantCoordinator.self) private var voiceAssistant
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var voiceAssistantAnchor: VoiceAssistantPlacement.Anchor?
 
     var body: some View {
         GeometryReader { proxy in
             let visibleWindows = workspace.windows.filter { !$0.isMinimized }
+            let presentations = workspace.presentations(
+                for: visibleWindows,
+                headPose: headPose.pose
+            )
             ZStack {
                 canvasBackground
 
-                if visibleWindows.isEmpty {
+                if workspace.presentationMode == .dashboard || visibleWindows.isEmpty {
                     SpatialDashboardView(environment: environment)
-                        .transition(.opacity)
-                        .zIndex(0)
+                        .transition(
+                            reduceMotion
+                                ? .opacity
+                                : .opacity.combined(with: .scale(scale: 0.97))
+                        )
+                        .zIndex(9_000)
                 }
 
-                ForEach(visibleWindows) { window in
-                    let layout = workspace.layout(for: window)
-                    if layout.panels.count == 1 {
-                        let projectedFrame = WindowProjection.frame(
-                            for: window.transform,
-                            in: CGRect(origin: .zero, size: proxy.size),
-                            headPose: headPose.pose
-                        )
-                        let frame = WindowProjection.framePreservingContentAspect(
-                            projectedFrame,
-                            contentAspectRatio: window.layoutContentAspectRatio,
-                            verticalChrome: WindowChromeLayout.verticalChromeHeight
-                        )
-                        SpatialWindowChrome(
-                            window: window,
-                            isFocused: workspace.activeWindowID == window.id,
-                            isMoveMode: workspace.activeWindowID == window.id && workspace.controlMode == .arrange,
-                            isExpanded: workspace.isExpanded(window.id),
-                            canvasFrame: frame,
-                            viewportSize: proxy.size,
-                            rotation: .degrees(-headPose.pose.roll),
-                            environment: environment
-                        )
-                        .frame(width: frame.width, height: frame.height)
-                        .rotationEffect(.degrees(-headPose.pose.roll))
-                        .position(x: frame.midX, y: frame.midY)
-                        .zIndex(Double(window.zIndex))
-                    } else {
-                        SpatialAppGroupView(
-                            window: window,
-                            layout: layout,
-                            viewportSize: proxy.size,
-                            headPose: headPose.pose,
-                            environment: environment
-                        )
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .zIndex(Double(window.zIndex))
+                if workspace.presentationMode == .workspace {
+                    ForEach(visibleWindows) { window in
+                        let layout = workspace.layout(for: window)
+                        if let presentation = presentations[window.id], layout.panels.count == 1 {
+                            let presentedWindow = presentation.window
+                            let projectedFrame = WindowProjection.frame(
+                                for: presentedWindow.transform,
+                                in: CGRect(origin: .zero, size: proxy.size),
+                                headPose: presentation.projectionHeadPose
+                            )
+                            let frame = WindowProjection.framePreservingContentAspect(
+                                projectedFrame,
+                                contentAspectRatio: presentedWindow.layoutContentAspectRatio,
+                                verticalChrome: WindowChromeLayout.verticalChromeHeight
+                            )
+                            SpatialWindowChrome(
+                                window: presentedWindow,
+                                isFocused: workspace.activeWindowID == window.id,
+                                isMoveMode: workspace.activeWindowID == window.id && workspace.controlMode == .arrange,
+                                isExpanded: workspace.isExpanded(window.id),
+                                canvasFrame: frame,
+                                viewportSize: proxy.size,
+                                rotation: .degrees(presentation.rotationDegrees),
+                                environment: environment
+                            )
+                            .frame(width: frame.width, height: frame.height)
+                            .rotationEffect(.degrees(presentation.rotationDegrees))
+                            .position(x: frame.midX, y: frame.midY)
+                            .zIndex(Double(window.zIndex))
+                        } else if let presentation = presentations[window.id] {
+                            SpatialAppGroupView(
+                                window: presentation.window,
+                                layout: layout,
+                                viewportSize: proxy.size,
+                                headPose: presentation.projectionHeadPose,
+                                environment: environment
+                            )
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .zIndex(Double(window.zIndex))
+                        }
                     }
                 }
 
@@ -71,24 +84,24 @@ struct SpatialCanvasView: View {
                 .padding(.horizontal, 32)
                 .zIndex(10_000)
 
-                if workspace.isAppSwitcherPresented {
+                if workspace.presentationMode == .workspace, workspace.isAppSwitcherPresented {
                     AppSwitcherOverlay()
                         .transition(.opacity.combined(with: .scale(scale: 0.97)))
                         .zIndex(15_000)
                 }
 
-                if !workspace.windows.isEmpty, !workspace.isAppSwitcherPresented {
+                if workspace.isDockPresented, !workspace.isAppSwitcherPresented {
                     if let dockPosition = SpatialDockPlacement.position(
                         in: CGRect(origin: .zero, size: proxy.size),
                         headPose: headPose.pose,
                         isTracking: headPose.isTracking
                     ) {
-                        SpatialDockView(windows: workspace.windows)
+                        SpatialDockView(items: dashboard.launchers)
                             .rotationEffect(.degrees(-headPose.pose.roll))
                             .position(dockPosition)
                             .zIndex(18_000)
                     } else {
-                        SpatialDockView(windows: workspace.windows)
+                        SpatialDockView(items: dashboard.launchers)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                             .padding(.bottom, 28)
                             .zIndex(18_000)
@@ -128,6 +141,15 @@ struct SpatialCanvasView: View {
                         .transition(.opacity)
                         .zIndex(30_000)
                 }
+
+                if let session = activeGeneratedStereoSession {
+                    GeneratedStereoFullscreenView(
+                        session: session,
+                        viewportSize: proxy.size
+                    )
+                    .transition(.opacity)
+                    .zIndex(30_000)
+                }
             }
             .coordinateSpace(name: Self.coordinateSpace)
             .onPreferenceChange(StatusBarHitFramePreferenceKey.self) { frames in
@@ -136,15 +158,20 @@ struct SpatialCanvasView: View {
             .onPreferenceChange(DockHitFramePreferenceKey.self) { frames in
                 inputRouter.updateDockHitFrames(frames, in: proxy.size)
             }
+            .onPreferenceChange(VoiceAssistantDismissHitFramePreferenceKey.self) { frame in
+                inputRouter.updateVoiceAssistantDismissHitFrame(frame, in: proxy.size)
+            }
             .onDisappear {
                 inputRouter.clearStatusBarHitFrames()
                 inputRouter.clearDockHitFrames()
+                inputRouter.clearVoiceAssistantDismissHitFrame()
             }
             .onChange(of: voiceAssistant.state.phase.isPresented, initial: true) { _, isPresented in
                 if isPresented, headPose.isTracking {
                     voiceAssistantAnchor = VoiceAssistantPlacement.anchor(below: headPose.pose)
                 } else if !isPresented {
                     voiceAssistantAnchor = nil
+                    inputRouter.clearVoiceAssistantDismissHitFrame()
                 }
             }
             .onChange(of: headPose.isTracking) { _, isTracking in
@@ -154,6 +181,14 @@ struct SpatialCanvasView: View {
                     voiceAssistantAnchor = nil
                 }
             }
+            .onChange(of: workspace.presentationMode, initial: true) { _, mode in
+                inputRouter.setDashboardPresented(mode == .dashboard)
+            }
+            .onChange(of: workspace.isDockPresented, initial: true) { _, isPresented in
+                if !isPresented {
+                    inputRouter.clearDockHitFrames()
+                }
+            }
             .clipped()
         }
         .ignoresSafeArea()
@@ -161,17 +196,27 @@ struct SpatialCanvasView: View {
     }
 
     private var activeSpatialPhotoPair: SpatialPhotoStereoPair? {
-        guard !workspace.isAppSwitcherPresented,
+        guard workspace.presentationMode == .workspace,
+              !workspace.isAppSwitcherPresented,
               let window = workspace.activeWindow,
               case .gallery = window.source else { return nil }
         let session = environment.surfaces.mediaSession(for: window.id)
-        guard session.presentationMode == .spatial3D else { return nil }
+        guard session.presentationMode == .sourceStereo else { return nil }
         return session.spatialPhoto
+    }
+
+    private var activeGeneratedStereoSession: MediaSession? {
+        guard workspace.presentationMode == .workspace,
+              !workspace.isAppSwitcherPresented,
+              let window = workspace.activeWindow,
+              case .gallery = window.source else { return nil }
+        let session = environment.surfaces.mediaSession(for: window.id)
+        return session.isGeneratedStereoActive ? session : nil
     }
 
     private func canvasCursor(in size: CGSize) -> some View {
         let isHoveringInteractiveTarget = inputRouter.isHoveringInteractiveTarget(
-            in: workspace.activeWindowID
+            in: workspace.presentationMode == .dashboard ? nil : workspace.activeWindowID
         )
         return Circle()
             .fill(.white)
@@ -407,16 +452,22 @@ private struct PWAWebPanelView: View {
 }
 
 private struct SpatialDockView: View {
-    let windows: [WorkspaceWindow]
+    let items: [DashboardItem]
 
-    @Environment(WorkspaceStore.self) private var workspace
     @Environment(InputRouter.self) private var inputRouter
 
     var body: some View {
         HStack(spacing: 10) {
-            ForEach(windows) { window in
-                dockItem(window)
-                    .dockHitTarget(window.id, in: SpatialCanvasView.coordinateSpace)
+            dockBackButton
+                .dockHitTarget(.dismiss, in: SpatialCanvasView.coordinateSpace)
+
+            Rectangle()
+                .fill(.white.opacity(0.18))
+                .frame(width: 1, height: 54)
+
+            ForEach(items) { item in
+                dockItem(item)
+                    .dockHitTarget(.launch(item.id), in: SpatialCanvasView.coordinateSpace)
             }
         }
         .padding(12)
@@ -429,17 +480,45 @@ private struct SpatialDockView: View {
         .fixedSize()
         .allowsHitTesting(false)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Open applications")
+        .accessibilityLabel("Application dock")
     }
 
-    private func dockItem(_ window: WorkspaceWindow) -> some View {
-        let isActive = workspace.activeWindowID == window.id
-        let isHovered = inputRouter.dockItem() == window.id
+    private var dockBackButton: some View {
+        let isHovered = inputRouter.dockAction() == .dismiss
+        return VStack(spacing: 5) {
+            Image(systemName: "arrow.backward")
+                .font(.system(size: 25, weight: .semibold))
+                .foregroundStyle(isHovered ? .orange : .white.opacity(0.88))
+                .frame(width: 58, height: 54)
+                .background(
+                    isHovered ? Color.white.opacity(0.16) : Color.black.opacity(0.22),
+                    in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .strokeBorder(isHovered ? Color.orange : .clear, lineWidth: 2.5)
+                }
+
+            Text("Back")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 66)
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .scaleEffect(isHovered ? 1.12 : 1)
+        .offset(y: isHovered ? -5 : 0)
+        .animation(.spring(response: 0.22, dampingFraction: 0.72), value: isHovered)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Back to windows")
+    }
+
+    private func dockItem(_ item: DashboardItem) -> some View {
+        let action = DockAction.launch(item.id)
+        let isHovered = inputRouter.dockAction() == action
 
         return VStack(spacing: 5) {
-            Image(systemName: window.systemImage)
-                .font(.system(size: 27, weight: .semibold))
-                .foregroundStyle(isActive ? .orange : .white.opacity(window.isMinimized ? 0.48 : 0.88))
+            dockIcon(for: item)
                 .frame(width: 58, height: 54)
                 .background(
                     isHovered ? Color.white.opacity(0.16) : Color.black.opacity(0.22),
@@ -448,20 +527,16 @@ private struct SpatialDockView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 17, style: .continuous)
                         .strokeBorder(
-                            isHovered ? Color.orange : isActive ? Color.orange.opacity(0.55) : .clear,
-                            lineWidth: isHovered ? 2.5 : 1.5
+                            isHovered ? accent(for: item) : .clear,
+                            lineWidth: isHovered ? 2.5 : 1
                         )
                 }
 
-            Text(window.title)
+            Text(title(for: item))
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(window.isMinimized ? 0.46 : 0.7))
+                .foregroundStyle(.white.opacity(0.7))
                 .lineLimit(1)
                 .frame(width: 66)
-
-            Circle()
-                .fill(isActive ? Color.orange : window.isMinimized ? Color.white.opacity(0.2) : Color.white.opacity(0.55))
-                .frame(width: 5, height: 5)
         }
         .padding(.vertical, 3)
         .contentShape(Rectangle())
@@ -469,26 +544,84 @@ private struct SpatialDockView: View {
         .offset(y: isHovered ? -5 : 0)
         .animation(.spring(response: 0.22, dampingFraction: 0.72), value: isHovered)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(window.title)
-        .accessibilityValue(isActive ? "Active" : window.isMinimized ? "Minimized" : "Open")
+        .accessibilityLabel(title(for: item))
+        .accessibilityHint("Opens in a new window")
+    }
+
+    @ViewBuilder
+    private func dockIcon(for item: DashboardItem) -> some View {
+        switch item.content {
+        case .app(let kind):
+            Image(systemName: kind.systemImage)
+                .font(.system(size: 27, weight: .semibold))
+                .foregroundStyle(accent(for: item))
+        case .pwa(let installation):
+            monogram(installation.manifest.monogram, accent: accent(for: item))
+        case .bookmark(let bookmark):
+            monogram(bookmark.monogram, accent: accent(for: item))
+        case .widget:
+            EmptyView()
+        }
+    }
+
+    private func monogram(_ value: String, accent: Color) -> some View {
+        Text(value)
+            .font(.system(size: value.count > 1 ? 18 : 25, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: 42, height: 42)
+            .background(accent.opacity(0.78), in: Circle())
+    }
+
+    private func title(for item: DashboardItem) -> String {
+        switch item.content {
+        case .app(let kind): kind.title
+        case .pwa(let installation): installation.manifest.name
+        case .bookmark(let bookmark): bookmark.title
+        case .widget(let kind): kind.title
+        }
+    }
+
+    private func accent(for item: DashboardItem) -> Color {
+        switch item.content {
+        case .app(.gallery): .orange
+        case .app(.browser): .cyan
+        case .app(.maps): .green
+        case .app(.youtube): .red
+        case .app(.remoteDesktop): .purple
+        case .pwa: .blue
+        case .bookmark(let bookmark): color(for: bookmark.accent)
+        case .widget: .orange
+        }
+    }
+
+    private func color(for accent: DashboardAccent) -> Color {
+        switch accent {
+        case .orange: .orange
+        case .cyan: .cyan
+        case .red: .red
+        case .purple: .purple
+        case .blue: .blue
+        case .green: .green
+        case .pink: .pink
+        }
     }
 }
 
 private struct DockHitFramePreferenceKey: PreferenceKey {
-    static let defaultValue: [UUID: CGRect] = [:]
+    static let defaultValue: [DockAction: CGRect] = [:]
 
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+    static func reduce(value: inout [DockAction: CGRect], nextValue: () -> [DockAction: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
 private extension View {
-    func dockHitTarget(_ id: UUID, in coordinateSpace: String) -> some View {
+    func dockHitTarget(_ action: DockAction, in coordinateSpace: String) -> some View {
         background {
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: DockHitFramePreferenceKey.self,
-                    value: [id: proxy.frame(in: .named(coordinateSpace))]
+                    value: [action: proxy.frame(in: .named(coordinateSpace))]
                 )
             }
         }
@@ -544,6 +677,18 @@ private struct VoiceAssistantOverlay: View {
                         .lineLimit(2)
                 }
                 .frame(maxWidth: 420, alignment: .leading)
+
+                Button {
+                    assistant.cancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .background(.white.opacity(0.12), in: Circle())
+                .voiceAssistantDismissHitTarget(in: SpatialCanvasView.coordinateSpace)
+                .accessibilityLabel("Turn off Voice Mode")
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
@@ -552,8 +697,7 @@ private struct VoiceAssistantOverlay: View {
             .shadow(color: accent.opacity(0.34), radius: 28)
         }
         .animation(.easeInOut(duration: 0.22), value: assistant.state.phase)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(assistant.state.agentName), \(assistant.state.statusText)")
     }
 
@@ -565,6 +709,27 @@ private struct VoiceAssistantOverlay: View {
         case .speaking: .green
         case .error: .red
         default: .white
+        }
+    }
+}
+
+private struct VoiceAssistantDismissHitFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        value = nextValue() ?? value
+    }
+}
+
+private extension View {
+    func voiceAssistantDismissHitTarget(in coordinateSpace: String) -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: VoiceAssistantDismissHitFramePreferenceKey.self,
+                    value: proxy.frame(in: .named(coordinateSpace))
+                )
+            }
         }
     }
 }
@@ -852,6 +1017,14 @@ private struct WorkspaceStatusBar: View {
                 .foregroundStyle(.orange)
                 .statusBarSection()
 
+            if environment.wakeWordController.state.isListening {
+                divider
+
+                Label("Listening for Sloppy", systemImage: "waveform.badge.mic")
+                    .foregroundStyle(.green)
+                    .statusBarSection()
+            }
+
             divider
 
             PeriodicDateView(every: .seconds(30)) { date in
@@ -951,7 +1124,7 @@ private struct WorkspaceStatusBar: View {
             } label: {
                 Image(systemName: "house.fill")
             }
-            .statusBarButton(isSelected: workspace.activeWindowID == nil)
+            .statusBarButton(isSelected: workspace.presentationMode == .dashboard)
             .statusBarHitTarget(.dashboard, in: SpatialCanvasView.coordinateSpace)
             .accessibilityLabel("Dashboard")
 
@@ -972,6 +1145,16 @@ private struct WorkspaceStatusBar: View {
             .statusBarButton(isSelected: workspace.controlMode == .arrange)
             .statusBarHitTarget(.arrangeMode, in: SpatialCanvasView.coordinateSpace)
             .accessibilityLabel("Arrange mode")
+
+            Button {
+                workspace.toggleLayoutMode(for: headPose.pose)
+            } label: {
+                Image(systemName: workspace.layoutMode.systemImage)
+            }
+            .statusBarButton(isSelected: workspace.layoutMode == .stack)
+            .statusBarHitTarget(.toggleWorkspaceLayout, in: SpatialCanvasView.coordinateSpace)
+            .accessibilityLabel("Workspace layout")
+            .accessibilityValue(workspace.layoutMode.title)
 
             Button {
                 workspace.recenter()
@@ -1281,6 +1464,20 @@ private struct SpatialWindowControlBar: View {
                 }
             }
 
+            let stackForcesAnchor = environment.workspace.layoutMode == .stack
+            controlButton(
+                title: stackForcesAnchor
+                    ? "Stack temporarily uses Anchor"
+                    : "Switch to \(window.attachmentMode.next.title)",
+                systemImage: stackForcesAnchor ? "pin.fill" : window.attachmentMode.systemImage,
+                isDisabled: stackForcesAnchor
+            ) {
+                environment.workspace.toggleAttachmentMode(
+                    for: window.id,
+                    headPose: environment.headPose.pose
+                )
+            }
+
             controlButton(title: "Minimize", systemImage: "chevron.down") {
                 environment.minimizeWindow(window.id)
             }
@@ -1317,6 +1514,7 @@ private struct SpatialWindowControlBar: View {
     private func controlButton(
         title: String,
         systemImage: String,
+        isDisabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(title, systemImage: systemImage, action: action)
@@ -1326,6 +1524,8 @@ private struct SpatialWindowControlBar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .opacity(isDisabled ? 0.42 : 1)
     }
 }
 
@@ -1346,7 +1546,12 @@ private struct SpatialWindowMoveHandle: View {
                 )
 
             if isMoveMode {
-                Text("\(window.transform.virtualDistance, specifier: "%.2f") m")
+                HStack(spacing: 8) {
+                    if let position = environment.workspace.stackPosition(for: windowID) {
+                        Text("#\(position.index + 1)/\(position.count)")
+                    }
+                    Text("\(window.transform.virtualDistance, specifier: "%.2f") m")
+                }
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)

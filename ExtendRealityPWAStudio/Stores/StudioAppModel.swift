@@ -12,6 +12,7 @@ final class StudioAppModel {
     var fixtures = StudioFixtureData()
     var layout: SpatialAppLayout
     var windowTransform = StudioWindowTransform()
+    var cameraTransform = StudioCameraTransform()
     var logs: [StudioLogEntry] = []
     var isInspectorPresented = true
     var activePanelID: SpatialPanelID = .primary
@@ -24,6 +25,7 @@ final class StudioAppModel {
     @ObservationIgnored private let websiteDataStore = WKWebsiteDataStore.default()
     @ObservationIgnored private var secondarySessions: [SpatialPanelID: StudioWebSession] = [:]
     @ObservationIgnored private let projectAccess: StudioProjectAccess
+    @ObservationIgnored private let bundledServer: BundledPWAHTTPServer?
 
     @ObservationIgnored
     private(set) lazy var primarySession = makeSession(isPrimary: true)
@@ -31,6 +33,7 @@ final class StudioAppModel {
     init() {
         let projectAccess = StudioProjectAccess()
         self.projectAccess = projectAccess
+        bundledServer = try? BundledPWAHTTPServer()
         layout = Self.defaultLayout(title: StudioPreset.pwaLab.title)
         launchCommand = projectAccess.storedCommand
         do {
@@ -55,12 +58,13 @@ final class StudioAppModel {
     }
 
     var serverHint: String {
+        if selectedPreset.isBundled {
+            return "The production PWA is included in the app. The copied command starts an optional Vite server for HMR development."
+        }
         if serverCommand != nil {
-            selectedPreset == .custom
-                ? "Run the copied command in Terminal, then press Launch. Framework HMR works when the selected server supports it."
-                : "Run the copied command in Terminal, then press Launch. Vite HMR updates the viewport automatically."
+            return "Run the copied command in Terminal, then press Launch. Framework HMR works when the selected server supports it."
         } else {
-            "Choose a project directory or enter a local HTTP or HTTPS address."
+            return "Choose a project directory or enter a local HTTP or HTTPS address."
         }
     }
 
@@ -132,6 +136,30 @@ final class StudioAppModel {
     }
 
     func launch() {
+        if selectedPreset.isBundled,
+           URL(string: address)?.scheme == BundledPWAResources.scheme {
+            guard let bundledServer else {
+                appendLog(.error, source: "runtime", message: BundledPWAHTTPServer.ServerError.missingResources.localizedDescription)
+                return
+            }
+            let preset = selectedPreset
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let url = try await bundledServer.appURL(path: preset.bundledPath)
+                    guard selectedPreset == preset else { return }
+                    address = url.absoluteString
+                    launchResolvedAddress()
+                } catch {
+                    appendLog(.error, source: "runtime", message: error.localizedDescription)
+                }
+            }
+            return
+        }
+        launchResolvedAddress()
+    }
+
+    private func launchResolvedAddress() {
         do {
             let url = try StudioURL.resolve(address, displayMode: displayMode)
             resetSpatialLayout()
@@ -171,6 +199,10 @@ final class StudioAppModel {
         windowTransform = StudioWindowTransform()
     }
 
+    func resetCamera() {
+        cameraTransform = StudioCameraTransform()
+    }
+
     func moveWindow(from initial: StudioWindowTransform, translation: CGSize, viewport: CGSize) {
         guard viewport.width > 0, viewport.height > 0 else { return }
         var next = initial
@@ -195,6 +227,12 @@ final class StudioAppModel {
     func adjustDistance(by delta: Double) {
         windowTransform.distance += delta
         windowTransform.clamp()
+    }
+
+    func rotateCamera(yaw: Double = 0, pitch: Double = 0) {
+        cameraTransform.yaw += yaw
+        cameraTransform.pitch += pitch
+        cameraTransform.clamp()
     }
 
     func focusNextPanel() {
@@ -315,9 +353,11 @@ final class StudioAppModel {
 
             switch inspection.packageName?.lowercased() {
             case "pwa-lab":
-                address = StudioPreset.pwaLab.defaultAddress
+                address = "http://127.0.0.1:5173/pwa-lab/"
             case "spatial-board":
-                address = StudioPreset.spatialBoard.defaultAddress
+                address = "http://127.0.0.1:5174/spatial-board/"
+            case "spatial-video":
+                address = "http://127.0.0.1:5175/spatial-video/"
             default:
                 break
             }

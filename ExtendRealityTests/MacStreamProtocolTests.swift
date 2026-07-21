@@ -2,6 +2,30 @@ import XCTest
 @testable import ExtendReality
 
 final class MacStreamProtocolTests: XCTestCase {
+    func testDecodesShareableApplicationCatalog() throws {
+        let data = Data(
+            """
+            {
+              "version": 1,
+              "applications": [
+                {
+                  "id": "pid:321",
+                  "name": "Preview",
+                  "bundleIdentifier": "com.apple.Preview",
+                  "processID": 321
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let catalog = try JSONDecoder().decode(MacShareableApplicationCatalog.self, from: data)
+
+        XCTAssertEqual(catalog.version, 1)
+        XCTAssertEqual(catalog.applications.first?.id, "pid:321")
+        XCTAssertEqual(catalog.applications.first?.name, "Preview")
+    }
+
     func testDecodesRemoteStartResponse() throws {
         let data = Data(
             """
@@ -24,6 +48,7 @@ final class MacStreamProtocolTests: XCTestCase {
         XCTAssertEqual(session.streams.last?.url.path, "/display/2")
         XCTAssertEqual(try XCTUnwrap(session.streams.first?.aspectRatio), 16.0 / 9.0, accuracy: 0.0001)
         XCTAssertNil(session.cursorURL)
+        XCTAssertNil(session.audio)
     }
 
     func testDecodesVirtualCursorChannel() throws {
@@ -35,7 +60,15 @@ final class MacStreamProtocolTests: XCTestCase {
               "streams": [
                 {"id":"primary","name":"Mac","url":"http://mac.local:52799/","width":2560,"height":1440}
               ],
-              "cursorURL": "http://mac.local:52799/api/v1/cursor"
+              "cursorURL": "http://mac.local:52799/api/v1/cursor",
+              "audio": {
+                "version": 1,
+                "playbackURL": "http://mac.local:52799/api/v1/audio/playback.pcm",
+                "microphoneURL": "http://mac.local:52799/api/v1/audio/microphone.pcm",
+                "sampleRate": 48000,
+                "playbackChannels": 2,
+                "microphoneChannels": 1
+              }
             }
             """.utf8
         )
@@ -53,6 +86,8 @@ final class MacStreamProtocolTests: XCTestCase {
         XCTAssertEqual(cursor.x, 0.25)
         XCTAssertEqual(cursor.y, 0.75)
         XCTAssertTrue(cursor.visible)
+        XCTAssertTrue(try XCTUnwrap(session.audio).isSupported)
+        XCTAssertEqual(session.audio?.playbackURL.path, "/api/v1/audio/playback.pcm")
     }
 
     func testRecognizesOnlyHTTPMacStreamAddresses() {

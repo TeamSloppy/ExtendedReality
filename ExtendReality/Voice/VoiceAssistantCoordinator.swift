@@ -18,11 +18,13 @@ final class VoiceAssistantCoordinator {
     @ObservationIgnored private let contextProvider: any AssistantContextProviding
     @ObservationIgnored private let workspace: WorkspaceStore
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let cancellationAutoHideDuration: Duration
     @ObservationIgnored private var voiceConfig: VoiceModeConfiguration = .localFallback
     @ObservationIgnored private var capturedContext: AssistantContext = .empty
     @ObservationIgnored private var contextTask: Task<AssistantContext, Never>?
     @ObservationIgnored private var operationTask: Task<Void, Never>?
     @ObservationIgnored private var streamTask: Task<String?, Never>?
+    @ObservationIgnored private var cancellationHideTask: Task<Void, Never>?
     @ObservationIgnored var onStateChange: (() -> Void)?
 
     init(
@@ -33,7 +35,8 @@ final class VoiceAssistantCoordinator {
         capture: any VoiceCapturing = NativeVoiceCapture(),
         localTranscriber: any LocalVoiceTranscribing = NativeLocalVoiceTranscriber(),
         player: any VoicePlaying = NativeVoicePlayer(),
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        cancellationAutoHideDuration: Duration = .seconds(4)
     ) {
         self.settings = settings
         self.workspace = workspace
@@ -43,6 +46,7 @@ final class VoiceAssistantCoordinator {
         self.localTranscriber = localTranscriber
         self.player = player
         self.defaults = defaults
+        self.cancellationAutoHideDuration = cancellationAutoHideDuration
     }
 
     var actionTitle: String {
@@ -76,13 +80,24 @@ final class VoiceAssistantCoordinator {
         case .transcribing, .awaitingAgent:
             cancel()
         case .idle, .error, .cancelled:
-            state.phase = .transcribing
-            state.statusText = "Starting Voice Mode…"
-            operationTask = Task { @MainActor [weak self] in await self?.startListening() }
+            beginListening()
+        }
+    }
+
+    func activate() {
+        switch state.phase {
+        case .idle, .error, .cancelled:
+            beginListening()
+        case .speaking:
+            player.stop()
+            beginListening()
+        case .listening, .transcribing, .preview, .awaitingAgent:
+            break
         }
     }
 
     func cancel() {
+        cancellationHideTask?.cancel()
         operationTask?.cancel()
         operationTask = nil
         streamTask?.cancel()
@@ -93,10 +108,11 @@ final class VoiceAssistantCoordinator {
         player.stop()
         state.phase = .cancelled
         state.statusText = "Cancelled"
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard self?.state.phase == .cancelled else { return }
-            self?.state = .idle
+        cancellationHideTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: cancellationAutoHideDuration)
+            guard self.state.phase == .cancelled else { return }
+            self.state = .idle
         }
     }
 
@@ -119,6 +135,14 @@ final class VoiceAssistantCoordinator {
         } catch {
             connectionStatus = error.localizedDescription
         }
+    }
+
+    private func beginListening() {
+        cancellationHideTask?.cancel()
+        cancellationHideTask = nil
+        state.phase = .transcribing
+        state.statusText = "Starting Voice Mode…"
+        operationTask = Task { @MainActor [weak self] in await self?.startListening() }
     }
 
     private func startListening() async {

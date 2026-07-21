@@ -143,8 +143,8 @@ struct StudioSidebarView: View {
                 }
 
                 Label(
-                    model.selectedPreset == .custom ? "External server workflow" : "Vite HMR enabled",
-                    systemImage: model.selectedPreset == .custom ? "server.rack" : "bolt.horizontal.circle.fill"
+                    model.selectedPreset == .custom ? "External server workflow" : "Bundled production build",
+                    systemImage: model.selectedPreset == .custom ? "server.rack" : "shippingbox.fill"
                 )
                     .foregroundStyle(.green)
                     .font(.callout)

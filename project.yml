@@ -36,16 +36,21 @@ targets:
         NSBonjourServices:
           - _rfb._tcp.
           - _extend-reality._tcp.
-        NSPhotoLibraryUsageDescription: ExtendReality displays photos and videos you select in the glasses workspace.
+        NSPhotoLibraryUsageDescription: ExtendReality displays your photo and video library in the glasses workspace.
         NSPhotoLibraryAddUsageDescription: ExtendReality saves screenshots and recordings of the glasses display to your photo library.
         NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.
         NSCameraUsageDescription: ExtendReality uses the camera for debug-only spatial tracking and lets you grant selected web apps camera access.
-        NSMicrophoneUsageDescription: ExtendReality records your voice when you invoke Sloppy Assistant and lets you grant selected web apps microphone access.
-        NSSpeechRecognitionUsageDescription: ExtendReality converts your voice into text for local Sloppy Assistant input.
+        NSMicrophoneUsageDescription: ExtendReality can listen on device for the Sloppy wake word while the app is open, record your Voice Mode requests, and let you grant selected web apps microphone access.
+        NSSpeechRecognitionUsageDescription: ExtendReality uses on-device speech recognition to detect the Sloppy wake word while the app is open and to transcribe local Voice Mode input.
         NSLocationWhenInUseUsageDescription: ExtendReality uses your location while the app is open to provide location-aware spatial apps.
         NSLocationDefaultAccuracyReduced: true
         NSHealthShareUsageDescription: ExtendReality reads your steps, active energy, and heart rate to show a private activity summary.
         NSFocusStatusUsageDescription: ExtendReality reads whether Focus is active so spatial apps can respect your availability.
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.vladprusakov.ExtendReality.maps
+            CFBundleURLSchemes:
+              - extendreality
         ExtendRealityPWACatalogURL: "https://xr.sloppy.team/plugins/catalog.json"
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
@@ -75,6 +80,31 @@ targets:
         codeSign: true
       - target: ExtendRealityWatch
         embed: true
+      - target: ExtendRealityMapsShare
+        embed: true
+  ExtendRealityMapsShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ExtendRealityMapsShare
+    info:
+      path: ExtendRealityMapsShare/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Add to ExtendReality Maps
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.maps-share
+        PRODUCT_NAME: ExtendRealityMapsShare
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        SKIP_INSTALL: YES
   ExtendRealityWatch:
     type: application
     platform: watchOS
@@ -124,12 +154,22 @@ targets:
     platform: macOS
     sources:
       - path: ExtendRealityMac
+      - path: Shared/SessionAudioProtocol.swift
+      - path: Shared/SpatialCore
+      - path: ExtendReality/PWA/PWAApp.swift
+      - path: ExtendReality/Domain/WorkspaceModels.swift
+      - path: ExtendReality/Persistence/WorkspacePersistence.swift
+      - path: ExtendReality/Workspace/WorkspaceStore.swift
+      - path: ExtendReality/Workspace/WorkspaceLayoutProjection.swift
+      - path: ExtendReality/ExternalDisplay/WindowProjection.swift
+      - path: ExtendReality/Input/InputRouter.swift
     info:
       path: ExtendRealityMac/Resources/Info.plist
       properties:
         CFBundleDisplayName: ExtendReality Mac
         LSApplicationCategoryType: public.app-category.utilities
         NSScreenCaptureUsageDescription: ExtendReality streams the displays you select to your spatial workspace.
+        NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods as a fallback for Direct Mode head tracking.
         NSLocalNetworkUsageDescription: ExtendReality sends display streams to your iPhone on the local network.
         NSBonjourServices:
           - _extend-reality._tcp.
@@ -156,6 +196,11 @@ targets:
     platform: macOS
     sources:
       - path: ExtendRealityPWAStudio
+        excludes:
+          - Resources/PWAApps
+      - path: ExtendRealityPWAStudio/Resources/PWAApps
+        type: folder
+        buildPhase: resources
       - path: ExtendReality/PWA/PWAApp.swift
       - path: ExtendReality/Domain/WorkspaceModels.swift
     info:

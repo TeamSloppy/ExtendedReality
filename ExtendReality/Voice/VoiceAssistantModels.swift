@@ -12,7 +12,16 @@ enum VoiceAssistantPhase: String, Sendable, Equatable {
     case cancelled
 
     var isPresented: Bool {
-        self != .idle && self != .cancelled
+        self != .idle
+    }
+
+    var suppressesWakeWord: Bool {
+        switch self {
+        case .idle, .error:
+            false
+        case .listening, .transcribing, .preview, .awaitingAgent, .speaking, .cancelled:
+            true
+        }
     }
 }
 
@@ -45,11 +54,23 @@ final class VoiceAssistantSettings {
         static let dashboardURL = "voiceAssistant.dashboardURL"
         static let agentID = "voiceAssistant.agentID"
         static let sharesContext = "voiceAssistant.sharesActiveContext"
+        static let wakeWordEnabled = "voiceAssistant.wakeWordEnabled"
         static let token = "voiceAssistant.sloppyToken"
         static let configured = "voiceAssistant.configured"
     }
 
-    var isEnabled: Bool { didSet { save() } }
+    var isEnabled: Bool {
+        didSet {
+            save()
+            notifyWakeWordConfigurationChange()
+        }
+    }
+    var wakeWordEnabled: Bool {
+        didSet {
+            save()
+            notifyWakeWordConfigurationChange()
+        }
+    }
     var coreURLString: String { didSet { save() } }
     var dashboardURLString: String { didSet { save() } }
     var agentID: String { didSet { save() } }
@@ -67,12 +88,14 @@ final class VoiceAssistantSettings {
     private let defaults: UserDefaults
     private let keychain: KeychainStore
     private var isLoading = true
+    @ObservationIgnored var onWakeWordConfigurationChange: (() -> Void)?
 
     init(defaults: UserDefaults = .standard, keychain: KeychainStore) {
         self.defaults = defaults
         self.keychain = keychain
         let configured = defaults.bool(forKey: Key.configured)
         isEnabled = configured ? defaults.bool(forKey: Key.enabled) : true
+        wakeWordEnabled = defaults.bool(forKey: Key.wakeWordEnabled)
         coreURLString = defaults.string(forKey: Key.coreURL) ?? "http://localhost:25101"
         dashboardURLString = defaults.string(forKey: Key.dashboardURL) ?? "http://localhost:25102"
         agentID = defaults.string(forKey: Key.agentID) ?? "sloppy"
@@ -101,10 +124,16 @@ final class VoiceAssistantSettings {
         guard !isLoading else { return }
         defaults.set(true, forKey: Key.configured)
         defaults.set(isEnabled, forKey: Key.enabled)
+        defaults.set(wakeWordEnabled, forKey: Key.wakeWordEnabled)
         defaults.set(coreURLString, forKey: Key.coreURL)
         defaults.set(dashboardURLString, forKey: Key.dashboardURL)
         defaults.set(agentID, forKey: Key.agentID)
         defaults.set(sharesActiveContext, forKey: Key.sharesContext)
+    }
+
+    private func notifyWakeWordConfigurationChange() {
+        guard !isLoading else { return }
+        onWakeWordConfigurationChange?()
     }
 
     private func normalizedURL(_ value: String) -> URL? {

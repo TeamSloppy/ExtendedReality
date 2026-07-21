@@ -1,0 +1,1 @@
+{"name":"Spatial Board","short_name":"Board","description":"An offline-first spatial whiteboard.","start_url":"/spatial-board/","display":"standalone","background_color":"#F0FDFA","theme_color":"#0D9488","lang":"en","scope":"/spatial-board/","id":"/spatial-board/","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

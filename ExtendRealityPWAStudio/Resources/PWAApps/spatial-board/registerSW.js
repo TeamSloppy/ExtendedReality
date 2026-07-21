@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/spatial-board/sw.js', { scope: '/spatial-board/' })})}

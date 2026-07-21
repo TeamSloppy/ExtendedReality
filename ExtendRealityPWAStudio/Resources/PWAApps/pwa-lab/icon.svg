@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PWA Lab">
+  <rect width="512" height="512" rx="116" fill="#0f172a"/>
+  <path d="M197 112h118v38l-20 18v66l83 122c17 25-1 58-31 58H165c-30 0-48-33-31-58l83-122v-66l-20-18v-38Z" fill="#e2e8f0"/>
+  <path d="M168 340h176l-54-80h-68l-54 80Z" fill="#22c55e"/>
+  <circle cx="226" cy="311" r="12" fill="#f8fafc"/>
+  <circle cx="278" cy="287" r="9" fill="#f8fafc"/>
+</svg>

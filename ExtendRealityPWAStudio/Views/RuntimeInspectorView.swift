@@ -10,6 +10,7 @@ struct RuntimeInspectorView: View {
                 permissionsSection
                 fixturesSection
                 spatialSection
+                cameraSection
                 consoleSection
             }
             .padding(16)
@@ -117,6 +118,45 @@ struct RuntimeInspectorView: View {
                 Button("Smaller") { model.adjustScale(by: 1 / 1.08) }
                 Button("Larger") { model.adjustScale(by: 1.08) }
                 Button("Reset") { model.resetTransform() }
+            }
+        }
+    }
+
+    private var cameraSection: some View {
+        InspectorGroup(title: "Virtual camera", systemImage: "video") {
+            LabeledContent("Yaw") {
+                Slider(
+                    value: Binding(
+                        get: { model.cameraTransform.yaw },
+                        set: { model.cameraTransform.yaw = $0 }
+                    ),
+                    in: -42 ... 42,
+                    step: 1
+                )
+                .frame(width: 130)
+            }
+            LabeledContent("Pitch") {
+                Slider(
+                    value: Binding(
+                        get: { model.cameraTransform.pitch },
+                        set: { model.cameraTransform.pitch = $0 }
+                    ),
+                    in: -24 ... 24,
+                    step: 1
+                )
+                .frame(width: 130)
+            }
+            LabeledContent("Direction") {
+                Text("\(model.cameraTransform.yaw.formatted(.number.precision(.fractionLength(0))))° yaw · \(model.cameraTransform.pitch.formatted(.number.precision(.fractionLength(0))))° pitch")
+                    .monospacedDigit()
+            }
+
+            HStack {
+                Button("Left") { model.rotateCamera(yaw: -5) }
+                Button("Right") { model.rotateCamera(yaw: 5) }
+                Button("Up") { model.rotateCamera(pitch: 5) }
+                Button("Down") { model.rotateCamera(pitch: -5) }
+                Button("Reset") { model.resetCamera() }
             }
         }
     }

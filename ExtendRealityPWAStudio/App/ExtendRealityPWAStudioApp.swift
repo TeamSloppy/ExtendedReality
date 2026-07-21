@@ -43,6 +43,8 @@ struct ExtendRealityPWAStudioApp: App {
                     .keyboardShortcut(.tab, modifiers: [.control])
                 Button("Recenter Spatial Window") { model.resetTransform() }
                     .keyboardShortcut("0", modifiers: [.command])
+                Button("Recenter Virtual Camera") { model.resetCamera() }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
                 Button("Make Spatial Window Larger") { model.adjustScale(by: 1.08) }
                     .keyboardShortcut("+", modifiers: [.command])
                 Button("Make Spatial Window Smaller") { model.adjustScale(by: 1 / 1.08) }

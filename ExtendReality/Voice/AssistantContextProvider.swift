@@ -15,11 +15,21 @@ extension SurfaceRegistry: AssistantContextProviding {
 
         switch window.source {
         case .browser:
+            let browser = browser(for: window.id)
             return await webContext(
-                session: browser(for: window.id),
+                session: browser.activeSession,
                 title: window.title,
                 kind: "browser",
-                cursor: cursor
+                cursor: browser.contentPosition(for: cursor)
+            )
+        case .maps:
+            let session = mapsSession(for: window.id)
+            return AssistantContext(
+                surfaceTitle: session.destinationTitle,
+                surfaceKind: "maps",
+                url: session.shareURL?.absoluteString,
+                focusedText: session.firstInstruction,
+                screenshotJPEG: nil
             )
         case .pwa(let installation, let displayMode):
             return await webContext(
@@ -63,6 +73,14 @@ extension SurfaceRegistry: AssistantContextProviding {
                 focusedText: nil,
                 screenshotJPEG: session.framebuffer.map(UIImage.init(cgImage:)).flatMap(Self.compressedJPEG)
             )
+        case .macCapture:
+            return AssistantContext(
+                surfaceTitle: window.title,
+                surfaceKind: "mac_direct",
+                url: nil,
+                focusedText: nil,
+                screenshotJPEG: nil
+            )
         }
     }
 
@@ -70,13 +88,19 @@ extension SurfaceRegistry: AssistantContextProviding {
         session: BrowserSession,
         title: String,
         kind: String,
-        cursor: CGPoint
+        cursor: CGPoint?
     ) async -> AssistantContext {
-        AssistantContext(
+        let focusedText: String?
+        if let cursor {
+            focusedText = await session.focusedText(at: cursor)
+        } else {
+            focusedText = nil
+        }
+        return AssistantContext(
             surfaceTitle: session.title.isEmpty ? title : session.title,
             surfaceKind: kind,
             url: session.address,
-            focusedText: await session.focusedText(at: cursor),
+            focusedText: focusedText,
             screenshotJPEG: await Self.snapshotJPEG(of: session.webView)
         )
     }

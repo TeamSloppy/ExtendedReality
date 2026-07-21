@@ -25,9 +25,7 @@ final class WatchControlModel: NSObject {
 
     @ObservationIgnored private let motionManager = CMMotionManager()
     @ObservationIgnored private var session: WCSession?
-    @ObservationIgnored private var accumulatedX = 0.0
-    @ObservationIgnored private var accumulatedY = 0.0
-    @ObservationIgnored private var lastSentAt = 0.0
+    @ObservationIgnored private var pointerMotion = WristPointerMotionProcessor()
     @ObservationIgnored private var isPreview = false
 
     override init() {
@@ -68,6 +66,11 @@ final class WatchControlModel: NSObject {
         snapshot.voiceAssistantPhase != "idle" && snapshot.voiceAssistantPhase != "cancelled"
     }
 
+    var activePlayback: WatchPlaybackState? {
+        guard snapshot.playback?.windowID == snapshot.activeWindowID else { return nil }
+        return snapshot.playback
+    }
+
     func togglePointer() {
         isPointerActive ? stopPointer() : startPointer()
     }
@@ -79,9 +82,7 @@ final class WatchControlModel: NSObject {
         }
         guard !motionManager.isDeviceMotionActive else { return }
         motionAvailable = true
-        accumulatedX = 0
-        accumulatedY = 0
-        lastSentAt = 0
+        pointerMotion.reset()
         motionManager.deviceMotionUpdateInterval = 1.0 / 40.0
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
             MainActor.assumeIsolated {
@@ -94,8 +95,7 @@ final class WatchControlModel: NSObject {
     func stopPointer() {
         motionManager.stopDeviceMotionUpdates()
         isPointerActive = false
-        accumulatedX = 0
-        accumulatedY = 0
+        pointerMotion.reset()
     }
 
     func click() {
@@ -109,8 +109,7 @@ final class WatchControlModel: NSObject {
     }
 
     func recenter() {
-        accumulatedX = 0
-        accumulatedY = 0
+        pointerMotion.reset()
         send(.recenter, expectsState: true)
         WKInterfaceDevice.current().play(.directionUp)
     }
@@ -135,6 +134,16 @@ final class WatchControlModel: NSObject {
         send(.back)
     }
 
+    func togglePlayback() {
+        send(.togglePlayback, expectsState: true)
+        WKInterfaceDevice.current().play(.click)
+    }
+
+    func seekPlayback(seconds: Double) {
+        send(.seekPlayback(seconds: seconds), expectsState: true)
+        WKInterfaceDevice.current().play(seconds < 0 ? .directionDown : .directionUp)
+    }
+
     func toggleVoiceAssistant() {
         send(.toggleVoiceAssistant, expectsState: true)
         WKInterfaceDevice.current().play(.click)
@@ -146,30 +155,14 @@ final class WatchControlModel: NSObject {
 
     private func consume(_ motion: CMDeviceMotion?) {
         guard let motion, isPointerActive else { return }
-        let deadZone = 0.07
-        let horizontalRate = applyDeadZone(motion.rotationRate.y, deadZone: deadZone)
-        let verticalRate = applyDeadZone(motion.rotationRate.x, deadZone: deadZone)
-        let interval = motionManager.deviceMotionUpdateInterval
-        let gain = 0.15 * sensitivity
-
-        accumulatedX += horizontalRate * interval * gain
-        accumulatedY += verticalRate * interval * gain * (invertVertical ? -1 : 1)
-
-        guard motion.timestamp - lastSentAt >= 0.05 else { return }
-        let x = accumulatedX
-        let y = accumulatedY
-        accumulatedX = 0
-        accumulatedY = 0
-        lastSentAt = motion.timestamp
-
-        if abs(x) > 0.0002 || abs(y) > 0.0002 {
-            send(.pointerDelta(x: x, y: y))
-        }
-    }
-
-    private func applyDeadZone(_ value: Double, deadZone: Double) -> Double {
-        guard abs(value) > deadZone else { return 0 }
-        return value - deadZone * (value < 0 ? -1 : 1)
+        guard let delta = pointerMotion.consume(
+            rotationRateX: motion.rotationRate.x,
+            rotationRateY: motion.rotationRate.y,
+            timestamp: motion.timestamp,
+            sensitivity: sensitivity,
+            invertVertical: invertVertical
+        ) else { return }
+        send(.pointerDelta(x: delta.x, y: delta.y))
     }
 
     private func send(_ command: WatchControlCommand, expectsState: Bool = false) {
@@ -223,12 +216,12 @@ final class WatchControlModel: NSObject {
 #if DEBUG
 @MainActor
 extension WatchControlModel {
-    static func preview() -> WatchControlModel {
+    static func preview(showsPlayback: Bool = false) -> WatchControlModel {
         let browserID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let galleryID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
         return WatchControlModel(
             previewSnapshot: WatchWorkspaceSnapshot(
-                activeWindowID: browserID,
+                activeWindowID: showsPlayback ? galleryID : browserID,
                 windows: [
                     WatchWindowSummary(
                         id: browserID,
@@ -240,11 +233,14 @@ extension WatchControlModel {
                         id: galleryID,
                         title: "Gallery",
                         kind: "gallery",
-                        isMinimized: true
+                        isMinimized: false
                     ),
                 ],
                 trackingStatus: "AirPods 3DoF active",
-                isTracking: true
+                isTracking: true,
+                playback: showsPlayback
+                    ? WatchPlaybackState(windowID: galleryID, isPlaying: true)
+                    : nil
             )
         )
     }

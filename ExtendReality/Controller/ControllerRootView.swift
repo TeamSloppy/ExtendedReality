@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 enum ControllerSheet: String, Identifiable {
     case controls
+    case maps
     var id: String { rawValue }
 }
 
@@ -20,7 +21,9 @@ struct ControllerRootView: View {
     @FocusState private var isKeyboardFocused: Bool
 
     var body: some View {
-        controllerContent
+        NavigationStack {
+            controllerContent
+        }
         .preferredColorScheme(.dark)
         .fileImporter(
             isPresented: $isImportingFile,
@@ -40,12 +43,21 @@ struct ControllerRootView: View {
             }
         }
         .onChange(of: selectedPhoto, handleSelectedPhotoChange)
-        .sheet(item: $presentedSheet) { _ in
-            ControllerToolsSheet(
-                environment: environment,
-                isImportingFile: $isImportingFile,
-                selectedPhoto: $selectedPhoto
-            )
+        .sheet(item: $presentedSheet) { sheet in
+            Group {
+                switch sheet {
+                case .controls:
+                    ControllerToolsSheet(
+                        environment: environment,
+                        isImportingFile: $isImportingFile,
+                        selectedPhoto: $selectedPhoto
+                    )
+                case .maps:
+                    if let session = activeMapsSession {
+                        MapsRoutePlannerSheet(session: session)
+                    }
+                }
+            }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
@@ -56,6 +68,15 @@ struct ControllerRootView: View {
         .onChange(of: workspace.windows) { _, _ in
             environment.watchRemote.syncState()
         }
+        .onChange(of: inputRouter.textInputFocusRequest) {
+            isKeyboardFocused = true
+        }
+        .onChange(of: environment.voiceModeActivationRouter.pendingRequest?.id, initial: true) {
+            _, requestID in
+            guard let requestID else { return }
+            environment.voiceAssistant.activate()
+            environment.voiceModeActivationRouter.consume(requestID)
+        }
         .onDisappear {
             laserController.stop()
             environment.hardwareMouseInput.setCaptureEnabled(false)
@@ -63,29 +84,88 @@ struct ControllerRootView: View {
     }
 
     private var controllerContent: some View {
-        VStack(spacing: 14) {
-            controllerHeader
+        GeometryReader { proxy in
+            if proxy.size.width > proxy.size.height {
+                landscapeControllerContent
+                    .toolbar(.hidden, for: .navigationBar)
+            } else {
+                portraitControllerContent
+                    .toolbar(.visible, for: .navigationBar)
+                    .toolbar {
+                        controllerHeader
+                    }
+            }
+        }
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .overlay {
+            if environment.hardwareMouseInput.isCaptureEnabled {
+                mouseCaptureOverlay
+            }
+        }
+    }
 
-            TrackpadView(
-                workspace: workspace,
-                inputRouter: inputRouter,
-                mode: inputMode,
-                laserController: laserController,
-                onShowDashboard: environment.showDashboard,
-                onShowWorkspace: environment.showWorkspace
-            )
-            .frame(maxHeight: .infinity)
+    private var portraitControllerContent: some View {
+        VStack(spacing: 14) {
+            wakeWordStatus
+
+            trackpad
 
             quickActionsDock
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay {
-            if environment.hardwareMouseInput.isCaptureEnabled {
-                mouseCaptureOverlay
+    }
+
+    private var landscapeControllerContent: some View {
+        HStack(spacing: 12) {
+            landscapeControlRail
+                .frame(width: 180)
+
+            ZStack(alignment: .top) {
+                trackpad
+
+                if environment.wakeWordController.state.isListening {
+                    wakeWordStatus
+                        .padding(.top, 10)
+                        .padding(.horizontal, 16)
+                        .allowsHitTesting(false)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    private var trackpad: some View {
+        TrackpadView(
+            workspace: workspace,
+            dashboard: environment.dashboard,
+            inputRouter: inputRouter,
+            mode: inputMode,
+            laserController: laserController,
+            onShowDashboard: environment.showDashboard,
+            onShowDock: environment.showDock,
+            onCenterWindow: environment.centerActiveWindow
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var wakeWordStatus: some View {
+        if environment.wakeWordController.state.isListening {
+            Label(
+                environment.wakeWordController.state.statusText,
+                systemImage: environment.wakeWordController.state.systemImage
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.green)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(.green.opacity(0.12), in: Capsule())
+            .accessibilityIdentifier("voiceAssistant.wakeWordListening")
         }
     }
 
@@ -132,8 +212,9 @@ struct ControllerRootView: View {
         }
     }
 
-    private var controllerHeader: some View {
-        HStack(spacing: 12) {
+    @ToolbarContentBuilder
+    private var controllerHeader: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
             Button {
                 ControllerHaptics.click()
                 presentedSheet = .controls
@@ -142,8 +223,6 @@ struct ControllerRootView: View {
                     .font(.title3.weight(.semibold))
                     .frame(width: 48, height: 48)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 16))
             .accessibilityLabel("Controls")
             .overlay(alignment: .topTrailing) {
                 Circle()
@@ -152,7 +231,9 @@ struct ControllerRootView: View {
                     .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 2))
                     .accessibilityHidden(true)
             }
+        }
 
+        ToolbarItem(placement: .title) {
             Picker("Input mode", selection: $inputMode) {
                 ForEach(ControllerInputMode.allCases) { mode in
                     Label(mode.title, systemImage: mode.systemImage)
@@ -160,34 +241,35 @@ struct ControllerRootView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .labelsVisibility(.visible)
             .frame(height: 50)
             .accessibilityIdentifier("inputMode")
+        }
 
+        ToolbarItem(placement: .topBarTrailing) {
             Button {
                 environment.hardwareMouseInput.toggleCapture()
                 ControllerHaptics.selection()
             } label: {
                 Image(
                     systemName: environment.hardwareMouseInput.isCaptureEnabled
-                        ? "cursorarrow.motionlines"
-                        : "computermouse"
+                    ? "cursorarrow.motionlines"
+                    : "computermouse"
                 )
                 .font(.title3.weight(.semibold))
                 .frame(width: 48, height: 48)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 16))
             .tint(environment.hardwareMouseInput.isCaptureEnabled ? .cyan : nil)
             .disabled(!environment.hardwareMouseInput.isMouseConnected)
             .accessibilityLabel(
                 environment.hardwareMouseInput.isCaptureEnabled
-                    ? "Return mouse to iPad"
-                    : "Move mouse to XREAL display"
+                ? "Return mouse to iPad"
+                : "Move mouse to XREAL display"
             )
             .accessibilityHint(
                 environment.hardwareMouseInput.isMouseConnected
-                    ? "Captures the physical mouse for the spatial cursor"
-                    : "Connect a Bluetooth or USB mouse first"
+                ? "Captures the physical mouse for the spatial cursor"
+                : "Connect a Bluetooth or USB mouse first"
             )
             .accessibilityIdentifier("hardwareMouse.toggleCapture")
         }
@@ -239,20 +321,16 @@ struct ControllerRootView: View {
             .disabled(!environment.voiceAssistantSettings.isEnabled)
             .accessibilityIdentifier("voiceAssistant.toggle")
 
-            if workspace.activeWindow?.kind == .gallery {
-                PhotosPicker(
-                    selection: $selectedPhoto,
-                    matching: .any(of: [.images, .videos]),
-                    preferredItemEncoding: .current
-                ) {
-                    ControllerQuickActionLabel(
-                        title: "Media",
-                        systemImage: "photo.badge.plus"
-                    )
+            if let gallerySession = activeGallerySession {
+                galleryQuickAction(for: gallerySession)
+            }
+
+            if activeMapsSession != nil {
+                ControllerQuickActionButton(title: "Route", systemImage: "map.fill") {
+                    presentedSheet = .maps
+                    ControllerHaptics.selection()
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Choose photo or video")
-                .accessibilityIdentifier("gallery.importMedia")
+                .accessibilityIdentifier("maps.openRoutePlanner")
             }
 
             ControllerQuickActionButton(
@@ -262,7 +340,6 @@ struct ControllerRootView: View {
                 environment.centerActiveWindow()
                 ControllerHaptics.click()
             }
-            .disabled(workspace.activeWindow == nil)
             .accessibilityIdentifier("workspace.center")
 
             ControllerQuickActionButton(
@@ -276,6 +353,137 @@ struct ControllerRootView: View {
             }
             .disabled(workspace.windows.isEmpty)
             .accessibilityIdentifier("workspace.appSwitcher")
+        }
+    }
+
+    private var landscapeControlRail: some View {
+        VStack(spacing: 8) {
+            landscapeKeyboardDock
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8),
+                ],
+                spacing: 8
+            ) {
+                ControllerRailActionButton(
+                    title: "Controls",
+                    systemImage: "slider.horizontal.3",
+                    statusColor: workspace.isExternalDisplayConnected ? .green : .orange
+                ) {
+                    ControllerHaptics.click()
+                    presentedSheet = .controls
+                }
+                .accessibilityIdentifier("controls.open")
+
+                ControllerRailActionButton(
+                    title: "Mouse",
+                    systemImage: environment.hardwareMouseInput.isCaptureEnabled
+                        ? "cursorarrow.motionlines"
+                        : "computermouse",
+                    isSelected: environment.hardwareMouseInput.isCaptureEnabled
+                ) {
+                    environment.hardwareMouseInput.toggleCapture()
+                    ControllerHaptics.selection()
+                }
+                .disabled(!environment.hardwareMouseInput.isMouseConnected)
+                .accessibilityLabel(
+                    environment.hardwareMouseInput.isCaptureEnabled
+                        ? "Return mouse to iPad"
+                        : "Move mouse to XREAL display"
+                )
+                .accessibilityHint(
+                    environment.hardwareMouseInput.isMouseConnected
+                        ? "Captures the physical mouse for the spatial cursor"
+                        : "Connect a Bluetooth or USB mouse first"
+                )
+                .accessibilityIdentifier("hardwareMouse.toggleCapture")
+
+                ForEach(ControllerInputMode.allCases) { mode in
+                    ControllerRailActionButton(
+                        title: mode.title,
+                        systemImage: mode.systemImage,
+                        isSelected: inputMode == mode
+                    ) {
+                        inputMode = mode
+                    }
+                    .accessibilityIdentifier("inputMode.\(mode.rawValue)")
+                }
+
+                ControllerRailActionButton(
+                    title: environment.voiceAssistant.actionTitle,
+                    systemImage: environment.voiceAssistant.actionSystemImage,
+                    isSelected: environment.voiceAssistant.state.phase.isPresented
+                ) {
+                    environment.voiceAssistant.toggle()
+                    ControllerHaptics.click()
+                }
+                .disabled(!environment.voiceAssistantSettings.isEnabled)
+                .accessibilityIdentifier("voiceAssistant.toggle")
+
+                if let gallerySession = activeGallerySession {
+                    galleryRailAction(for: gallerySession)
+                }
+
+                if activeMapsSession != nil {
+                    ControllerRailActionButton(title: "Route", systemImage: "map.fill") {
+                        presentedSheet = .maps
+                        ControllerHaptics.selection()
+                    }
+                    .accessibilityIdentifier("maps.openRoutePlanner")
+                }
+
+                ControllerRailActionButton(
+                    title: "Center",
+                    systemImage: "scope"
+                ) {
+                    environment.centerActiveWindow()
+                    ControllerHaptics.click()
+                }
+                .accessibilityIdentifier("workspace.center")
+
+                ControllerRailActionButton(
+                    title: "Apps",
+                    systemImage: "square.stack.3d.up.fill",
+                    isSelected: workspace.isAppSwitcherPresented,
+                    badge: workspace.windows.count
+                ) {
+                    environment.toggleAppSwitcher()
+                    ControllerHaptics.selection()
+                }
+                .disabled(workspace.windows.isEmpty)
+                .accessibilityIdentifier("workspace.appSwitcher")
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var landscapeKeyboardDock: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "keyboard")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            TextField("Keyboard", text: $keyboardText)
+                .focused($isKeyboardFocused)
+                .font(.caption.weight(.semibold))
+                .submitLabel(.send)
+                .onSubmit(sendKeyboardText)
+
+            if !keyboardText.isEmpty {
+                Button("Send", systemImage: "paperplane.fill", action: sendKeyboardText)
+                    .labelStyle(.iconOnly)
+                    .font(.caption)
+                    .accessibilityIdentifier("keyboard.send")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(.white.opacity(0.11), lineWidth: 1)
         }
     }
 
@@ -313,6 +521,108 @@ struct ControllerRootView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var activeGallerySession: MediaSession? {
+        guard let activeWindow = workspace.activeWindow,
+              activeWindow.kind == .gallery else { return nil }
+        return environment.surfaces.mediaSession(for: activeWindow.id)
+    }
+
+    private var activeMapsSession: MapsSession? {
+        guard let activeWindow = workspace.activeWindow,
+              activeWindow.kind == .maps else { return nil }
+        return environment.surfaces.mapsSession(for: activeWindow.id)
+    }
+
+    @ViewBuilder
+    private func galleryQuickAction(for session: MediaSession) -> some View {
+        if session.isShowingPhotoLibrary {
+            Menu {
+                galleryFilterPicker(for: session)
+                Divider()
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .any(of: [.images, .videos]),
+                    preferredItemEncoding: .current
+                ) {
+                    Label("Choose Media", systemImage: "photo.badge.plus")
+                }
+            } label: {
+                ControllerQuickActionLabel(
+                    title: session.photoLibraryFilter.title,
+                    systemImage: session.photoLibraryFilter.systemImage,
+                    isSelected: session.photoLibraryFilter != .all
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Gallery filter")
+            .accessibilityIdentifier("gallery.quickFilter")
+        } else {
+            ControllerQuickActionButton(
+                title: "Library",
+                systemImage: "chevron.backward"
+            ) {
+                session.showPhotoLibrary()
+                ControllerHaptics.selection()
+            }
+            .accessibilityHint("Returns to the photo and video library")
+            .accessibilityIdentifier("gallery.showLibrary")
+        }
+    }
+
+    @ViewBuilder
+    private func galleryRailAction(for session: MediaSession) -> some View {
+        if session.isShowingPhotoLibrary {
+            Menu {
+                galleryFilterPicker(for: session)
+                Divider()
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .any(of: [.images, .videos]),
+                    preferredItemEncoding: .current
+                ) {
+                    Label("Choose Media", systemImage: "photo.badge.plus")
+                }
+            } label: {
+                ControllerRailActionLabel(
+                    title: session.photoLibraryFilter.title,
+                    systemImage: session.photoLibraryFilter.systemImage,
+                    isSelected: session.photoLibraryFilter != .all
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Gallery filter")
+            .accessibilityIdentifier("gallery.quickFilter")
+        } else {
+            ControllerRailActionButton(
+                title: "Library",
+                systemImage: "chevron.backward"
+            ) {
+                session.showPhotoLibrary()
+                ControllerHaptics.selection()
+            }
+            .accessibilityHint("Returns to the photo and video library")
+            .accessibilityIdentifier("gallery.showLibrary")
+        }
+    }
+
+    private func galleryFilterPicker(for session: MediaSession) -> some View {
+        Picker(
+            "Show",
+            selection: Binding(
+                get: { session.photoLibraryFilter },
+                set: {
+                    session.setPhotoLibraryFilter($0)
+                    ControllerHaptics.selection()
+                }
+            )
+        ) {
+            ForEach(MediaLibraryFilter.allCases) { filter in
+                Label(filter.title, systemImage: filter.systemImage)
+                    .tag(filter)
+            }
+        }
+    }
+
     private func sendKeyboardText() {
         guard !keyboardText.isEmpty else { return }
         inputRouter.insertText(keyboardText, in: workspace.activeWindowID)
@@ -340,6 +650,82 @@ private struct ControllerQuickActionButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct ControllerRailActionButton: View {
+    let title: String
+    let systemImage: String
+    var isSelected = false
+    var badge: Int?
+    var statusColor: Color?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ControllerRailActionLabel(
+                title: title,
+                systemImage: systemImage,
+                isSelected: isSelected,
+                badge: badge,
+                statusColor: statusColor
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct ControllerRailActionLabel: View {
+    let title: String
+    let systemImage: String
+    var isSelected = false
+    var badge: Int?
+    var statusColor: Color?
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: systemImage)
+                .font(.callout.weight(.semibold))
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .foregroundStyle(isSelected ? Color.cyan : Color.primary)
+        .frame(maxWidth: .infinity)
+        .frame(height: 58)
+        .background(
+            isSelected
+                ? Color.cyan.opacity(0.14)
+                : Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 18)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(isSelected ? Color.cyan.opacity(0.7) : .white.opacity(0.11), lineWidth: 1)
+        }
+        .overlay(alignment: .topTrailing) {
+            if let badge, badge > 0 {
+                Text("\(badge)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: 18, minHeight: 18)
+                    .background(.cyan, in: Capsule())
+                    .offset(x: 3, y: -3)
+            } else if let statusColor {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                    .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5))
+                    .offset(x: -7, y: 7)
+            }
+        }
+        .opacity(isEnabled ? 1 : 0.42)
     }
 }
 
@@ -391,6 +777,7 @@ private struct ControllerToolsSheet: View {
         case settings
         case dashboard
         case pwaStore
+        case macSources
 
         var id: String { rawValue }
     }
@@ -419,6 +806,7 @@ private struct ControllerToolsSheet: View {
                     if let active = workspace.activeWindow {
                         activeHeader(active)
                         modeControls
+                        spatialLayoutControls(active)
                         windowDistanceControls(active)
                         ActiveWindowControls(
                             window: active,
@@ -456,6 +844,8 @@ private struct ControllerToolsSheet: View {
                 DashboardEditorView(dashboard: environment.dashboard)
             case .pwaStore:
                 PWAStoreView(environment: environment)
+            case .macSources:
+                MacSourcePickerView(environment: environment)
             }
         }
         .alert("Mac connection failed", isPresented: macConnectionErrorPresented) {
@@ -612,7 +1002,8 @@ private struct ControllerToolsSheet: View {
                 ForEach(WindowKind.allCases) { kind in
                     Button {
                         if kind == .remoteDesktop {
-                            Task { await environment.openMacStream() }
+                            destination = .macSources
+                            ControllerHaptics.selection()
                         } else {
                             environment.openWindow(kind)
                             ControllerHaptics.click()
@@ -642,6 +1033,12 @@ private struct ControllerToolsSheet: View {
                 Text(status)
                     .font(.caption)
                     .foregroundStyle(macConnectionStatusColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let audioStatus = environment.macStreamClient.audioStatusText {
+                Label(audioStatus, systemImage: "airpodspro")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -780,17 +1177,73 @@ private struct ControllerToolsSheet: View {
         }
     }
 
+    private func spatialLayoutControls(_ window: WorkspaceWindow) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Spatial layout", systemImage: "square.3.layers.3d")
+                .font(.headline)
+
+            Picker(
+                "Workspace layout",
+                selection: Binding(
+                    get: { workspace.layoutMode },
+                    set: { workspace.setLayoutMode($0, for: headPose.pose) }
+                )
+            ) {
+                ForEach(WorkspaceLayoutMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("workspace.layoutMode")
+
+            Picker(
+                "Window attachment",
+                selection: Binding(
+                    get: {
+                        workspace.windows.first(where: { $0.id == window.id })?.attachmentMode
+                            ?? window.attachmentMode
+                    },
+                    set: {
+                        workspace.setAttachmentMode($0, for: window.id, headPose: headPose.pose)
+                    }
+                )
+            ) {
+                ForEach(WindowAttachmentMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(workspace.layoutMode == .stack)
+            .accessibilityIdentifier("window.attachmentMode")
+
+            Text(
+                workspace.layoutMode == .stack
+                    ? "Stack temporarily anchors every window. Drag horizontally to reorder, vertically to move the row, and pinch to change its distance."
+                    : "Anchor stays in world space. Smooth Follow eases the window toward your view. Follow keeps it locked to your view."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
     private func windowDistanceControls(_ window: WorkspaceWindow) -> some View {
         let range = WindowTransform3DoF.virtualDistanceRange
-        let distance = workspace.windows
-            .first(where: { $0.id == window.id })?
-            .transform.virtualDistance ?? window.transform.virtualDistance
+        let distance = workspace.layoutMode == .stack
+            ? workspace.stackTransform.virtualDistance
+            : workspace.windows
+                .first(where: { $0.id == window.id })?
+                .transform.virtualDistance ?? window.transform.virtualDistance
         let progress = (distance - range.lowerBound) / (range.upperBound - range.lowerBound)
         let percentage = Int((progress * 100).rounded())
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Window distance", systemImage: "viewfinder")
+                Label(
+                    workspace.layoutMode == .stack ? "Stack distance" : "Window distance",
+                    systemImage: "viewfinder"
+                )
                     .font(.headline)
                 Spacer()
                 Text("\(percentage)%")
@@ -808,15 +1261,17 @@ private struct ControllerToolsSheet: View {
                 Slider(
                     value: Binding(
                         get: {
-                            workspace.windows
-                                .first(where: { $0.id == window.id })?
-                                .transform.virtualDistance ?? distance
+                            workspace.layoutMode == .stack
+                                ? workspace.stackTransform.virtualDistance
+                                : workspace.windows
+                                    .first(where: { $0.id == window.id })?
+                                    .transform.virtualDistance ?? distance
                         },
                         set: { workspace.setWindowDistance(window.id, to: $0) }
                     ),
                     in: range
                 )
-                .accessibilityLabel("Window distance")
+                .accessibilityLabel(workspace.layoutMode == .stack ? "Stack distance" : "Window distance")
                 .accessibilityValue("\(percentage) percent")
 
                 Button("Farther", systemImage: "minus.magnifyingglass") {
@@ -844,9 +1299,11 @@ private struct ActiveWindowControls: View {
     var body: some View {
         switch window.source {
         case .browser:
-            BrowserControlsView(session: environment.surfaces.browser(for: window.id))
+            BrowserControlsView(browser: environment.surfaces.browser(for: window.id))
+        case .maps:
+            MapsControlsView(session: environment.surfaces.mapsSession(for: window.id))
         case .pwa(let installation, let displayMode):
-            BrowserControlsView(
+            WebSessionControlsView(
                 session: environment.surfaces.pwa(
                     for: window.id,
                     installation: installation,
@@ -866,18 +1323,26 @@ private struct ActiveWindowControls: View {
             )
         case .remoteDesktop(let address):
             if let address, SurfaceRegistry.isWebStreamAddress(address) {
-                BrowserControlsView(
+                WebSessionControlsView(
                     session: environment.surfaces.macStream(for: window.id, initialURL: address)
                 )
             } else {
                 VNCControlsView(session: environment.surfaces.remoteDesktop(for: window.id))
             }
+        case .macCapture:
+            EmptyView()
         }
     }
 }
 
 #if DEBUG
 #Preview("Controller — Active Window") {
+    let environment = AppEnvironment.preview()
+    ControllerRootView(environment: environment)
+        .previewEnvironment(environment)
+}
+
+#Preview("Controller — Active Window, landscape Left", traits: .landscapeLeft) {
     let environment = AppEnvironment.preview()
     ControllerRootView(environment: environment)
         .previewEnvironment(environment)

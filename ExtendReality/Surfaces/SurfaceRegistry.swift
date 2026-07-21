@@ -4,11 +4,14 @@ import WebKit
 @MainActor
 final class SurfaceRegistry {
     let inputRouter: InputRouter
+    var playbackStateDidChange: (() -> Void)?
     private unowned let workspace: WorkspaceStore
+    private unowned let systemData: SystemDataStore
     private let keychain: KeychainStore
     private let pwaCapabilityProvider: (String, PWACapability) -> Bool
     private let pwaDataProvider: (PWACapability) throws -> [String: Any]
-    private var browsers: [UUID: BrowserSession] = [:]
+    private var browsers: [UUID: BrowserWindowSession] = [:]
+    private var maps: [UUID: MapsSession] = [:]
     private var pwaBrowsers: [UUID: BrowserSession] = [:]
     private var pwaPanelBrowsers: [SpatialPanelSurfaceID: BrowserSession] = [:]
     private var media: [UUID: MediaSession] = [:]
@@ -20,12 +23,14 @@ final class SurfaceRegistry {
     init(
         inputRouter: InputRouter,
         workspace: WorkspaceStore,
+        systemData: SystemDataStore,
         keychain: KeychainStore,
         pwaCapabilityProvider: @escaping (String, PWACapability) -> Bool,
         pwaDataProvider: @escaping (PWACapability) throws -> [String: Any]
     ) {
         self.inputRouter = inputRouter
         self.workspace = workspace
+        self.systemData = systemData
         self.keychain = keychain
         self.pwaCapabilityProvider = pwaCapabilityProvider
         self.pwaDataProvider = pwaDataProvider
@@ -35,6 +40,7 @@ final class SurfaceRegistry {
         for window in windows {
             switch window.source {
             case .browser(let url): _ = browser(for: window.id, initialURL: url)
+            case .maps: _ = mapsSession(for: window.id)
             case .pwa(let installation, let displayMode):
                 _ = pwa(for: window.id, installation: installation, displayMode: displayMode)
             case .gallery: _ = mediaSession(for: window.id)
@@ -45,15 +51,36 @@ final class SurfaceRegistry {
                 } else {
                     _ = remoteDesktop(for: window.id, initialHost: host)
                 }
+            case .macCapture:
+                break
             }
         }
     }
 
-    func browser(for id: UUID, initialURL: String = "https://www.apple.com") -> BrowserSession {
-        if let session = browsers[id] { return session }
-        let session = BrowserSession(initialURL: initialURL)
-        browsers[id] = session
-        inputRouter.register(session, for: id)
+    func browser(for id: UUID, initialURL: String = "https://www.apple.com") -> BrowserWindowSession {
+        if let browser = browsers[id] { return browser }
+        let browser = BrowserWindowSession(
+            initialURL: initialURL,
+            textInputFocusHandler: { [weak inputRouter] in
+                inputRouter?.requestTextInputFocus()
+            },
+            sessionFactory: { [weak inputRouter] initialURL, loadsContent in
+                BrowserSession(
+                    initialURL: initialURL,
+                    loadsContent: loadsContent,
+                    textInputFocusHandler: { inputRouter?.requestTextInputFocus() }
+                )
+            }
+        )
+        browsers[id] = browser
+        inputRouter.register(browser, for: id)
+        return browser
+    }
+
+    func mapsSession(for id: UUID) -> MapsSession {
+        if let session = maps[id] { return session }
+        let session = MapsSession(systemData: systemData)
+        maps[id] = session
         return session
     }
 
@@ -91,7 +118,10 @@ final class SurfaceRegistry {
             dataProvider: { [pwaDataProvider] capability in
                 try pwaDataProvider(capability)
             },
-            spatialWindowClient: windowClient
+            spatialWindowClient: windowClient,
+            textInputFocusHandler: { [weak inputRouter] in
+                inputRouter?.requestTextInputFocus()
+            }
         )
         pwaBrowsers[id] = session
         inputRouter.register(session, for: id)
@@ -100,15 +130,37 @@ final class SurfaceRegistry {
 
     func mediaSession(for id: UUID) -> MediaSession {
         if let session = media[id] { return session }
-        let session = MediaSession()
+        let session = MediaSession { [weak self] in
+            self?.playbackStateDidChange?()
+        }
         media[id] = session
         inputRouter.register(session, for: id)
+        session.requestPhotoLibraryAccess()
         return session
+    }
+
+    func watchPlaybackState(for windowID: UUID?) -> WatchPlaybackState? {
+        guard let windowID else { return nil }
+        if let session = media[windowID], session.isVideo {
+            return WatchPlaybackState(windowID: windowID, isPlaying: session.isPlaying)
+        }
+        if let session = youtube[windowID], session.videoID != nil {
+            return WatchPlaybackState(windowID: windowID, isPlaying: session.isPlaying)
+        }
+        return nil
     }
 
     func youtubeSession(for id: UUID, initialVideoID: String? = nil) -> YouTubeSession {
         if let session = youtube[id] { return session }
-        let session = YouTubeSession(initialVideoID: initialVideoID)
+        let session = YouTubeSession(
+            initialVideoID: initialVideoID,
+            textInputFocusHandler: { [weak inputRouter] in
+                inputRouter?.requestTextInputFocus()
+            },
+            playbackStateDidChange: { [weak self] in
+                self?.playbackStateDidChange?()
+            }
+        )
         youtube[id] = session
         inputRouter.register(session, for: id)
         for panelID: SpatialPanelID in ["video", "info", "search", "transport"] {
@@ -143,6 +195,9 @@ final class SurfaceRegistry {
             },
             dataProvider: { [pwaDataProvider] capability in
                 try pwaDataProvider(capability)
+            },
+            textInputFocusHandler: { [weak inputRouter] in
+                inputRouter?.requestTextInputFocus()
             }
         )
         pwaPanelBrowsers[surfaceID] = session
@@ -160,7 +215,12 @@ final class SurfaceRegistry {
 
     func macStream(for id: UUID, initialURL: String) -> BrowserSession {
         if let session = macStreams[id] { return session }
-        let session = BrowserSession(initialURL: initialURL)
+        let session = BrowserSession(
+            initialURL: initialURL,
+            textInputFocusHandler: { [weak inputRouter] in
+                inputRouter?.requestTextInputFocus()
+            }
+        )
         macStreams[id] = session
         inputRouter.register(session, for: id)
         return session
@@ -174,6 +234,7 @@ final class SurfaceRegistry {
 
     func remove(windowID: UUID) {
         browsers.removeValue(forKey: windowID)
+        maps.removeValue(forKey: windowID)
         pwaBrowsers.removeValue(forKey: windowID)
         pwaPanelBrowsers = pwaPanelBrowsers.filter { $0.key.windowID != windowID }
         media.removeValue(forKey: windowID)

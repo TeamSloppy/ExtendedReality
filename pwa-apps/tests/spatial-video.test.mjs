@@ -11,6 +11,13 @@ import {
   isSpatialMessage,
   spatialMessage,
 } from '../spatial-video/src/spatial.js'
+import { isGoogleWebClientID, normalizeGoogleClientID } from '../spatial-video/src/youtube-auth.js'
+import {
+  fetchSubscriptionFeed,
+  subscriptionChannelIDs,
+  uploadsPlaylists,
+  videoFromPlaylistItem,
+} from '../spatial-video/src/youtube.js'
 
 test('parses supported YouTube video identifiers and rejects unrelated URLs', () => {
   assert.equal(parseYouTubeVideoID('dQw4w9WgXcQ'), 'dQw4w9WgXcQ')
@@ -50,8 +57,101 @@ test('builds the four-panel ExtendReality composition with same-origin routes', 
   assert.equal(new URL(layout.panels[2].url).searchParams.get('panel'), 'queue')
 })
 
+test('collapses Spatial Video to its primary window while playback is inactive', () => {
+  const layout = createSpatialLayout(
+    'https://apps.example.com/spatial-video/?extendDisplayMode=window',
+    'window',
+    false,
+  )
+  assert.equal(layout.primaryPanelID, 'video')
+  assert.deepEqual(layout.panels.map((panel) => panel.id), ['video'])
+})
+
 test('versions messages exchanged between spatial panels', () => {
   const message = spatialMessage('command', { command: { type: 'toggle-playback' } })
   assert.equal(isSpatialMessage(message), true)
   assert.equal(isSpatialMessage({ version: 2, type: 'command' }), false)
+})
+
+test('validates Google OAuth Web client IDs without persisting access tokens', () => {
+  const clientID = '123456789-spatialvideo.apps.googleusercontent.com'
+  assert.equal(normalizeGoogleClientID(`  ${clientID}\n`), clientID)
+  assert.equal(isGoogleWebClientID(clientID), true)
+  assert.equal(isGoogleWebClientID('not-a-web-client-id'), false)
+})
+
+test('normalizes subscription channels, upload playlists, and recent videos', () => {
+  assert.deepEqual(subscriptionChannelIDs({ items: [
+    { snippet: { resourceId: { channelId: 'channel-a' } } },
+    { snippet: { resourceId: { channelId: 'channel-a' } } },
+    { snippet: { resourceId: { channelId: 'channel-b' } } },
+  ] }), ['channel-a', 'channel-b'])
+
+  assert.deepEqual(uploadsPlaylists({ items: [
+    { id: 'channel-a', contentDetails: { relatedPlaylists: { uploads: 'uploads-a' } } },
+    { id: 'channel-b', contentDetails: { relatedPlaylists: {} } },
+  ] }), [{ channelID: 'channel-a', playlistID: 'uploads-a' }])
+
+  assert.deepEqual(videoFromPlaylistItem({
+    snippet: {
+      title: 'Latest &amp; greatest',
+      videoOwnerChannelTitle: 'Example channel',
+      thumbnails: { medium: { url: 'https://example.com/thumb.jpg' } },
+      resourceId: { videoId: 'dQw4w9WgXcQ' },
+    },
+    contentDetails: { videoId: 'dQw4w9WgXcQ', videoPublishedAt: '2026-07-20T10:00:00Z' },
+  }), {
+    kind: 'youtube',
+    videoId: 'dQw4w9WgXcQ',
+    title: 'Latest & greatest',
+    channelTitle: 'Example channel',
+    thumbnailURL: 'https://example.com/thumb.jpg',
+    publishedAt: '2026-07-20T10:00:00Z',
+  })
+})
+
+test('loads and sorts a read-only subscription feed with bearer authorization', async () => {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input)
+    calls.push({ url, init })
+    if (url.pathname.endsWith('/subscriptions')) {
+      return Response.json({ items: [
+        { snippet: { resourceId: { channelId: 'channel-a' } } },
+        { snippet: { resourceId: { channelId: 'channel-b' } } },
+      ] })
+    }
+    if (url.pathname.endsWith('/channels')) {
+      return Response.json({ items: [
+        { id: 'channel-a', contentDetails: { relatedPlaylists: { uploads: 'uploads-a' } } },
+        { id: 'channel-b', contentDetails: { relatedPlaylists: { uploads: 'uploads-b' } } },
+      ] })
+    }
+    const playlistID = url.searchParams.get('playlistId')
+    const newest = playlistID === 'uploads-b'
+    return Response.json({ items: [{
+      snippet: {
+        title: newest ? 'Newest video' : 'Older video',
+        videoOwnerChannelTitle: newest ? 'Channel B' : 'Channel A',
+        resourceId: { videoId: newest ? 'M7lc1UVf-VE' : 'dQw4w9WgXcQ' },
+      },
+      contentDetails: {
+        videoId: newest ? 'M7lc1UVf-VE' : 'dQw4w9WgXcQ',
+        videoPublishedAt: newest ? '2026-07-20T12:00:00Z' : '2026-07-19T12:00:00Z',
+      },
+    }] })
+  }
+
+  try {
+    const feed = await fetchSubscriptionFeed('memory-only-token', undefined, { maxChannels: 2, videosPerChannel: 1 })
+    assert.deepEqual(feed.map((item) => item.title), ['Newest video', 'Older video'])
+    assert.equal(calls.length, 4)
+    assert.ok(calls.every((call) => call.init.credentials === 'omit'))
+    assert.ok(calls.every((call) => call.init.headers.Authorization === 'Bearer memory-only-token'))
+    assert.equal(calls[0].url.searchParams.get('mine'), 'true')
+    assert.equal(calls[0].url.searchParams.get('order'), 'unread')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

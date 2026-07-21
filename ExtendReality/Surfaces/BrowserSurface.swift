@@ -45,6 +45,7 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
     private(set) var canGoBack = false
     private(set) var canGoForward = false
     private(set) var lastErrorMessage: String?
+    private(set) var hasLoadedRequest = false
     @ObservationIgnored let webView: WKWebView
     @ObservationIgnored private let navigationPolicy: PWAOriginPolicy?
     @ObservationIgnored private let capabilityProvider: (PWACapability) -> Bool
@@ -52,6 +53,8 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
     @ObservationIgnored private let dataMessageHandler: BrowserDataMessageHandler?
     @ObservationIgnored private let windowMessageHandler: BrowserWindowMessageHandler?
     @ObservationIgnored private let spatialWindowClient: SpatialWindowClient?
+    @ObservationIgnored private let textInputFocusHandler: () -> Void
+    @ObservationIgnored var newWindowHandler: ((URLRequest) -> Void)?
 
     private static let dataMessageHandlerName = "extendRealityData"
     private static let windowMessageHandlerName = "extendRealityWindows"
@@ -63,13 +66,15 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
         navigationPolicy: PWAOriginPolicy? = nil,
         capabilityProvider: @escaping (PWACapability) -> Bool = { _ in false },
         dataProvider: ((PWACapability) throws -> [String: Any])? = nil,
-        spatialWindowClient: SpatialWindowClient? = nil
+        spatialWindowClient: SpatialWindowClient? = nil,
+        textInputFocusHandler: @escaping () -> Void = {}
     ) {
         address = initialURL
         self.navigationPolicy = navigationPolicy
         self.capabilityProvider = capabilityProvider
         self.dataProvider = dataProvider
         self.spatialWindowClient = spatialWindowClient
+        self.textInputFocusHandler = textInputFocusHandler
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.websiteDataStore = websiteDataStore
@@ -122,22 +127,37 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
     func load(_ rawValue: String? = nil) {
         let raw = (rawValue ?? address).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
-        let resolved: String
-        if raw.contains("://") {
-            resolved = raw
-        } else if raw.contains(".") && !raw.contains(" ") {
-            resolved = "https://\(raw)"
-        } else {
-            let query = raw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? raw
-            resolved = "https://www.google.com/search?q=\(query)"
+        guard let url = BrowserURLResolver.resolve(raw) else {
+            lastErrorMessage = "Enter a valid web address or search query."
+            return
         }
-        address = resolved
-        guard let url = URL(string: resolved) else { return }
-        webView.load(URLRequest(url: url))
+        load(URLRequest(url: url))
+    }
+
+    func load(_ request: URLRequest) {
+        guard let url = request.url else { return }
+        address = url.absoluteString
+        lastErrorMessage = nil
+        hasLoadedRequest = true
+        webView.load(request)
     }
 
     func reload() {
-        webView.reload()
+        if webView.url == nil {
+            load()
+        } else {
+            webView.reload()
+        }
+    }
+
+    func goBack() {
+        guard webView.canGoBack else { return }
+        webView.goBack()
+    }
+
+    func goForward() {
+        guard webView.canGoForward else { return }
+        webView.goForward()
     }
 
     func handle(_ command: InputCommand) {
@@ -154,11 +174,26 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
             let literal = Self.javaScriptLiteral(text)
             webView.evaluateJavaScript("""
                 (() => {
-                  const e = document.activeElement;
+                  let e = document.activeElement;
+                  while (e?.shadowRoot?.activeElement) e = e.shadowRoot.activeElement;
                   if (!e) return;
                   if (typeof e.value === 'string') {
-                    e.value += \(literal);
-                    e.dispatchEvent(new Event('input', { bubbles: true }));
+                    const start = Number.isInteger(e.selectionStart) ? e.selectionStart : e.value.length;
+                    const end = Number.isInteger(e.selectionEnd) ? e.selectionEnd : start;
+                    const nextValue = e.value.slice(0, start) + \(literal) + e.value.slice(end);
+                    const prototype = e instanceof HTMLTextAreaElement
+                      ? HTMLTextAreaElement.prototype
+                      : HTMLInputElement.prototype;
+                    const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+                    if (setter) setter.call(e, nextValue); else e.value = nextValue;
+                    e.setSelectionRange?.(start + \(literal).length, start + \(literal).length);
+                    e.dispatchEvent(new InputEvent('input', {
+                      bubbles: true,
+                      inputType: 'insertText',
+                      data: \(literal)
+                    }));
+                  } else if (e.isContentEditable) {
+                    document.execCommand('insertText', false, \(literal));
                   }
                 })();
                 """)
@@ -167,6 +202,18 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
         case .media:
             break
         }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        guard navigationAction.targetFrame == nil,
+              let newWindowHandler else { return nil }
+        newWindowHandler(navigationAction.request)
+        return nil
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
@@ -337,12 +384,26 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
         let y = position.y * webView.bounds.height
         webView.evaluateJavaScript("""
             (() => {
-              const e = document.elementFromPoint(\(x), \(y));
-              if (!e) return;
+              const elementAtPoint = root => {
+                const hit = root.elementFromPoint?.(\(x), \(y));
+                if (!hit) return null;
+                return hit.shadowRoot ? elementAtPoint(hit.shadowRoot) ?? hit : hit;
+              };
+              const e = elementAtPoint(document);
+              if (!e) return false;
               e.dispatchEvent(new PointerEvent('\(name)', { bubbles:true, clientX:\(x), clientY:\(y), pointerType:'mouse' }));
-              \(click ? "if (typeof e.click === 'function') e.click();" : "")
+              \(click ? """
+              if (typeof e.click === 'function') e.click();
+              const editable = e.closest?.('textarea, [contenteditable]:not([contenteditable="false"]), input:not([type]), input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], input[type="password"], input[type="number"]');
+              if (!editable || editable.disabled || editable.readOnly) return false;
+              editable.focus({ preventScroll: false });
+              return true;
+              """ : "return false;")
             })();
-            """)
+            """) { [weak self] value, _ in
+                guard value as? Bool == true else { return }
+                self?.textInputFocusHandler()
+            }
     }
 
     private static func javaScriptLiteral(_ value: String) -> String {

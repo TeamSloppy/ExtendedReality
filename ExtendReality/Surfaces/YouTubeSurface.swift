@@ -26,6 +26,7 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
     private(set) var isPlaying = false
     private(set) var currentTime = 0.0
     private(set) var duration = 0.0
+    private(set) var playerErrorMessage: String?
 
     @ObservationIgnored let webView: WKWebView
     @ObservationIgnored private let playerMessageHandler: YouTubePlayerMessageHandler
@@ -33,9 +34,21 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
     @ObservationIgnored private var metadataTask: Task<Void, Never>?
     @ObservationIgnored private var apiClient: YouTubeAPIClient?
     @ObservationIgnored private var apiKeyProvider: () -> String = { "" }
+    @ObservationIgnored private let playerOrigin: URL
+    @ObservationIgnored private let textInputFocusHandler: () -> Void
+    @ObservationIgnored private let playbackStateDidChange: () -> Void
 
-    init(initialVideoID: String?, loadsContent: Bool = true) {
+    init(
+        initialVideoID: String?,
+        loadsContent: Bool = true,
+        appIdentifier: String? = Bundle.main.bundleIdentifier,
+        textInputFocusHandler: @escaping () -> Void = {},
+        playbackStateDidChange: @escaping () -> Void = {}
+    ) {
         videoID = initialVideoID
+        self.textInputFocusHandler = textInputFocusHandler
+        self.playbackStateDidChange = playbackStateDidChange
+        playerOrigin = YouTubePlayerClientIdentity.origin(appIdentifier: appIdentifier)
         let handler = YouTubePlayerMessageHandler()
         playerMessageHandler = handler
         let configuration = WKWebViewConfiguration()
@@ -151,15 +164,23 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
         }
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
-        isReady = true
-    }
-
     func receivePlayerState(_ payload: [String: Any]) {
+        let wasPlaying = isPlaying
+        if let errorCode = payload["error"] as? Int {
+            playerErrorMessage = Self.errorMessage(for: errorCode)
+            isReady = false
+            isPlaying = false
+        }
         if let state = payload["state"] as? Int { isPlaying = state == 1 }
         if let time = payload["time"] as? Double, time.isFinite { currentTime = time }
         if let duration = payload["duration"] as? Double, duration.isFinite { self.duration = duration }
-        if payload["ready"] as? Bool == true { isReady = true }
+        if payload["ready"] as? Bool == true {
+            playerErrorMessage = nil
+            isReady = true
+        }
+        if isPlaying != wasPlaying {
+            playbackStateDidChange()
+        }
     }
 
     private func handle(_ media: MediaCommand) {
@@ -173,7 +194,11 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
 
     private func handleSearchClick(at position: CGPoint) {
         if position.y < 0.18 {
-            if position.x > 0.78 { clearSearch() } else { submitSearch() }
+            if position.x > 0.78, !query.isEmpty {
+                clearSearch()
+            } else {
+                textInputFocusHandler()
+            }
             return
         }
         let resultHeight = 0.16
@@ -217,11 +242,15 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
         isPlaying = false
         currentTime = 0
         duration = 0
+        playerErrorMessage = nil
+        playbackStateDidChange()
         let id = videoID ?? ""
+        let origin = "\(playerOrigin.scheme ?? "https")://\(playerOrigin.host ?? "com.vladprusakov.extendreality")"
         let html = """
             <!doctype html>
             <html><head>
             <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+            <meta name="referrer" content="strict-origin-when-cross-origin">
             <style>html,body,#player{width:100%;height:100%;margin:0;background:#000;overflow:hidden}</style>
             </head><body><div id="player"></div>
             <script src="https://www.youtube.com/iframe_api"></script>
@@ -235,16 +264,40 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
               function onYouTubeIframeAPIReady(){
                 player = new YT.Player('player', {
                   videoId: '\(id)',
-                  playerVars: { playsinline: 1, controls: 0, rel: 0 },
+                  playerVars: { playsinline: 1, controls: 0, rel: 0, origin: '\(origin)' },
                   events: {
                     onReady: function(){ send({ready:true}); setInterval(() => send(), 500); },
-                    onStateChange: function(){ send(); }
+                    onStateChange: function(){ send(); },
+                    onError: function(event){ send({error:event.data}); }
                   }
                 });
               }
             </script></body></html>
             """
-        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+        webView.loadHTMLString(html, baseURL: playerOrigin)
+    }
+
+    private static func errorMessage(for code: Int) -> String {
+        switch code {
+        case 2: "The YouTube video ID is invalid."
+        case 5: "YouTube could not play this video in HTML5."
+        case 100: "This YouTube video is unavailable or private."
+        case 101, 150: "The creator disabled embedded playback for this video."
+        case 153: "YouTube rejected the app identity. Update ExtendReality and try again."
+        default: "YouTube player error \(code)."
+        }
+    }
+}
+
+enum YouTubePlayerClientIdentity {
+    private static let fallbackAppIdentifier = "com.vladprusakov.ExtendReality"
+
+    static func origin(appIdentifier: String?) -> URL {
+        let trimmed = appIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let isValid = !trimmed.isEmpty
+            && trimmed.range(of: "^[A-Za-z0-9.-]+$", options: .regularExpression) != nil
+        let identifier = isValid ? trimmed : fallbackAppIdentifier
+        return URL(string: "https://\(identifier.lowercased())/")!
     }
 }
 
@@ -313,7 +366,15 @@ private struct YouTubeInfoPanel: View {
                     .font(.body.monospaced()).foregroundStyle(.secondary)
             }
             Spacer()
-            Label(session.isPlaying ? "Playing" : session.isReady ? "Paused" : "Loading", systemImage: session.isPlaying ? "waveform" : "pause.circle")
+            if let error = session.playerErrorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Label(
+                session.playerErrorMessage != nil ? "Unavailable" : session.isPlaying ? "Playing" : session.isReady ? "Paused" : "Loading",
+                systemImage: session.playerErrorMessage != nil ? "exclamationmark.circle" : session.isPlaying ? "waveform" : "pause.circle"
+            )
                 .foregroundStyle(session.isPlaying ? .green : .secondary)
         }
         .padding(22)

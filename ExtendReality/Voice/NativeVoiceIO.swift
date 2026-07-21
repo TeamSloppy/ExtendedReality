@@ -21,9 +21,16 @@ protocol VoiceCapturing: AnyObject {
 
 @MainActor
 final class NativeVoiceCapture: NSObject, VoiceCapturing {
+    private let audioHub: MicrophoneAudioHub
     private var recorder: AVAudioRecorder?
     private var monitoringTask: Task<Void, Never>?
     private var fileURL: URL?
+    private var exclusiveLease: MicrophoneExclusiveLease?
+
+    init(audioHub: MicrophoneAudioHub = MicrophoneAudioHub()) {
+        self.audioHub = audioHub
+        super.init()
+    }
 
     var isRecording: Bool { recorder?.isRecording == true }
 
@@ -36,26 +43,37 @@ final class NativeVoiceCapture: NSObject, VoiceCapturing {
             throw VoiceIOError.microphonePermissionDenied
         }
 
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        let exclusiveLease = audioHub.beginExclusiveAccess()
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
 
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("extend-reality-voice-\(UUID().uuidString)")
-            .appendingPathExtension("m4a")
-        let recorder = try AVAudioRecorder(
-            url: fileURL,
-            settings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 16_000,
-                AVNumberOfChannelsKey: 1,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-            ]
-        )
-        recorder.isMeteringEnabled = true
-        guard recorder.record() else { throw VoiceIOError.recordingFailed }
-        self.fileURL = fileURL
-        self.recorder = recorder
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("extend-reality-voice-\(UUID().uuidString)")
+                .appendingPathExtension("m4a")
+            let recorder = try AVAudioRecorder(
+                url: fileURL,
+                settings: [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: 16_000,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+                ]
+            )
+            recorder.isMeteringEnabled = true
+            guard recorder.record() else { throw VoiceIOError.recordingFailed }
+            self.exclusiveLease = exclusiveLease
+            self.fileURL = fileURL
+            self.recorder = recorder
+        } catch {
+            exclusiveLease.release()
+            throw error
+        }
+        guard let recorder else {
+            exclusiveLease.release()
+            throw VoiceIOError.recordingFailed
+        }
 
         monitoringTask = Task { @MainActor in
             let startedAt = ContinuousClock.now
@@ -86,13 +104,18 @@ final class NativeVoiceCapture: NSObject, VoiceCapturing {
     }
 
     func stop() throws -> CapturedVoice {
-        guard let recorder, let fileURL else { throw VoiceIOError.notRecording }
+        guard let recorder, let fileURL else {
+            exclusiveLease?.release()
+            exclusiveLease = nil
+            throw VoiceIOError.notRecording
+        }
         monitoringTask?.cancel()
         monitoringTask = nil
         recorder.stop()
         self.recorder = nil
         self.fileURL = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        exclusiveLease?.release()
+        exclusiveLease = nil
         let data = try Data(contentsOf: fileURL)
         guard !data.isEmpty else { throw VoiceIOError.noSpeech }
         return CapturedVoice(data: data, mimeType: "audio/mp4", fileURL: fileURL)
@@ -105,7 +128,8 @@ final class NativeVoiceCapture: NSObject, VoiceCapturing {
         recorder = nil
         if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
         fileURL = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        exclusiveLease?.release()
+        exclusiveLease = nil
     }
 
     private func requestMicrophonePermission() async -> Bool {

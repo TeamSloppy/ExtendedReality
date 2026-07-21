@@ -37,10 +37,13 @@ enum WindowProjection {
         let relativePitch = pitch - headPose.pitch
         let unrotatedX = CGFloat(relativeYaw / 42) * viewport.width * 0.52
         let unrotatedY = -CGFloat(relativePitch / 24) * viewport.height * 0.44
-        let roll = CGFloat(-headPose.roll * .pi / 180)
-        let centerX = viewport.midX + unrotatedX * cos(roll) - unrotatedY * sin(roll)
-        let centerY = viewport.midY + unrotatedX * sin(roll) + unrotatedY * cos(roll)
-        return CGPoint(x: centerX, y: centerY)
+        // Keep head yaw and pitch aligned with the display axes. Rotating this
+        // vector by roll makes a pure left/right head turn drift vertically.
+        // Roll is applied to the visual chrome separately by SpatialCanvasView.
+        return CGPoint(
+            x: viewport.midX + unrotatedX,
+            y: viewport.midY + unrotatedY
+        )
     }
 
     static func framePreservingContentAspect(
@@ -128,9 +131,9 @@ enum VoiceAssistantPlacement {
         var pitch: Double
     }
 
-    /// The assistant lives below the forward horizon. At neutral head pose it
-    /// is outside the glasses' main view; looking down brings it to the center.
-    static let downwardPitchOffset = -30.0
+    /// The assistant sits in the lower part of the forward view so it remains
+    /// comfortable to glance at without requiring a pronounced downward tilt.
+    static let downwardPitchOffset = -14.0
 
     static func anchor(below headPose: HeadPose) -> Anchor {
         Anchor(

@@ -110,7 +110,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .queue-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .queue-header h2 { margin: 6px 0 0; font-size: clamp(16px, 1.4vw, 22px); letter-spacing: -.025em; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: rgb(0 0 0 / 28%); }
+.source-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .segmented button { display: flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; border: 0; border-radius: 9px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; transition: color 180ms ease, background-color 180ms ease; }
+.source-tabs button { gap: 4px; padding-inline: 5px; font-size: 9px; }
 .segmented button.active { color: #fff; background: rgb(225 29 72 / 22%); box-shadow: inset 0 0 0 1px rgb(251 113 133 / 20%); }
 .segmented button svg { width: 15px; height: 15px; }
 .segmented button span { min-width: 18px; padding: 2px 5px; border-radius: 99px; background: rgb(255 255 255 / 9%); font-size: 9px; }
@@ -126,6 +128,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .clear-search svg, .submit-search svg { width: 14px; height: 14px; }
 .inline-status { min-height: 16px; margin: -6px 2px 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .inline-status.error { color: #fda4af; }
+.subscription-toolbar { display: flex; min-height: 56px; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid rgb(147 197 253 / 22%); border-radius: 13px; background: rgb(37 99 235 / 9%); }
+.subscription-toolbar > div { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.subscription-toolbar strong { font-size: 11px; }
+.subscription-toolbar small { overflow: hidden; color: var(--muted); font-size: 9px; line-height: 1.35; text-overflow: ellipsis; }
 .result-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #343448 transparent; }
 .result-card, .offline-card { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; padding: 6px; border: 1px solid transparent; border-radius: 13px; background: rgb(255 255 255 / 4%); transition: border-color 180ms ease, background-color 180ms ease; }
 .result-card:hover, .offline-card:hover { border-color: var(--line); background: rgb(255 255 255 / 7%); }
@@ -177,6 +183,18 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .field-label { display: block; margin: 14px 0 7px; color: #dfe2eb; font-size: 11px; font-weight: 800; }
 .modal-input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; outline: 0; color: #fff; background: rgb(0 0 0 / 26%); font-size: 13px; }
 .modal-input:focus { border-color: rgb(251 113 133 / 55%); }
+.modal-input[aria-invalid="true"] { border-color: rgb(251 113 133 / 72%); }
+.field-error { margin: 7px 2px 0; color: #fda4af; font-size: 10px; line-height: 1.4; }
+.settings-divider { height: 1px; margin: 22px 0 5px; background: var(--line); }
+.oauth-card { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: rgb(0 0 0 / 20%); }
+.oauth-card > button { flex: 0 0 auto; }
+.oauth-status { display: flex; min-width: 0; flex: 1; align-items: center; gap: 10px; }
+.oauth-status > span { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 10px; color: #bfdbfe; background: rgb(37 99 235 / 15%); }
+.oauth-status.connected > span { color: #bbf7d0; background: rgb(22 163 74 / 15%); }
+.oauth-status svg { width: 17px; height: 17px; }
+.oauth-status div { display: grid; min-width: 0; gap: 3px; }
+.oauth-status strong { font-size: 11px; }
+.oauth-status small { color: var(--muted); font-size: 9px; line-height: 1.35; }
 .privacy-note { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; padding: 12px; border-radius: 12px; color: #cbd5e1; background: rgb(30 41 59 / 65%); }
 .privacy-note svg { width: 18px; height: 18px; flex: 0 0 auto; color: #93c5fd; }
 .privacy-note p { margin: 0; font-size: 11px; line-height: 1.45; }
@@ -237,6 +255,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .modal-card { padding: 18px; border-radius: 18px; }
   .modal-actions { align-items: stretch; flex-direction: column-reverse; }
   .modal-actions button { width: 100%; }
+  .oauth-card { align-items: stretch; flex-direction: column; }
+  .oauth-card > button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
