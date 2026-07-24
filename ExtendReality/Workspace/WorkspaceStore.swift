@@ -3,8 +3,8 @@ import Foundation
 import Observation
 
 enum WorkspacePresentationMode: Equatable, Sendable {
-    case workspace
-    case dashboard
+    case widgets
+    case windows
 }
 
 @MainActor
@@ -15,10 +15,10 @@ final class WorkspaceStore {
     private(set) var stackOrder: [UUID]
     private(set) var stackTransform: WorkspaceStackTransform
     private(set) var presentationMode: WorkspacePresentationMode
+    private(set) var isDashboardPresented = true
     var activeWindowID: UUID?
     var controlMode: ControlMode = .pointer
     var isExternalDisplayConnected = false
-    private(set) var isDockPresented = false
     var isAppSwitcherPresented = false
     private(set) var expandedWindowIDs: Set<UUID> = []
     private(set) var activePanelIDs: [UUID: SpatialPanelID] = [:]
@@ -43,7 +43,7 @@ final class WorkspaceStore {
             windows: restoredWindows
         )
         stackTransform = restored.stackTransform
-        presentationMode = .dashboard
+        presentationMode = .widgets
         stackTransform.clamp()
         for index in windows.indices {
             windows[index].isMinimized = true
@@ -86,8 +86,8 @@ final class WorkspaceStore {
         windows.append(window)
         stackOrder.append(window.id)
         activeWindowID = window.id
-        presentationMode = .workspace
-        isDockPresented = false
+        presentationMode = .windows
+        isDashboardPresented = false
         activePanelIDs[window.id] = layout(for: window).primaryPanelID
         isAppSwitcherPresented = false
         scheduleSave()
@@ -120,8 +120,8 @@ final class WorkspaceStore {
         windows[index].zIndex = nextZ
         windows[index].isMinimized = false
         activeWindowID = id
-        presentationMode = .workspace
-        isDockPresented = false
+        presentationMode = .windows
+        isDashboardPresented = false
         if let headPose {
             centerWindowOrStack(id, for: headPose)
         }
@@ -142,12 +142,10 @@ final class WorkspaceStore {
             controlMode = .pointer
         }
         if windows.isEmpty {
-            isDockPresented = false
             isAppSwitcherPresented = false
         }
         if !windows.contains(where: { !$0.isMinimized }) {
-            presentationMode = .dashboard
-            isDockPresented = false
+            presentationMode = .widgets
         }
         scheduleSave()
     }
@@ -163,10 +161,9 @@ final class WorkspaceStore {
             controlMode = .pointer
         }
         if !windows.contains(where: { !$0.isMinimized }) {
-            presentationMode = .dashboard
-            isDockPresented = false
+            presentationMode = .widgets
         } else if !windows[index].isMinimized {
-            presentationMode = .workspace
+            presentationMode = .windows
         }
         scheduleSave()
     }
@@ -200,7 +197,8 @@ final class WorkspaceStore {
 
         activeWindowID = id
         windows[index].isMinimized = false
-        presentationMode = .workspace
+        presentationMode = .windows
+        isDashboardPresented = false
         controlMode = .pointer
         scheduleSave()
     }
@@ -319,23 +317,38 @@ final class WorkspaceStore {
     }
 
     func showDashboard() {
-        isDockPresented = false
-        guard presentationMode != .dashboard else { return }
-        presentationMode = .dashboard
+        guard !isDashboardPresented else { return }
+        isDashboardPresented = true
         controlMode = .pointer
         isAppSwitcherPresented = false
     }
 
+    func toggleDashboard() {
+        if isDashboardPresented {
+            _ = dismissDashboard()
+        } else {
+            showDashboard()
+        }
+    }
+
     @discardableResult
     func dismissDashboard() -> Bool {
-        guard presentationMode == .dashboard else { return true }
-        if windows.contains(where: { !$0.isMinimized }) {
-            presentationMode = .workspace
-            return true
-        }
-        guard restoreMostRecentWindow() else { return false }
-        presentationMode = .workspace
+        isDashboardPresented = false
         return true
+    }
+
+    func showWidgets() {
+        presentationMode = .widgets
+        isDashboardPresented = false
+        isAppSwitcherPresented = false
+        controlMode = .pointer
+    }
+
+    func showWindows() {
+        presentationMode = .windows
+        isDashboardPresented = false
+        isAppSwitcherPresented = false
+        controlMode = .pointer
     }
 
     @discardableResult
@@ -343,14 +356,14 @@ final class WorkspaceStore {
         if let activeWindowID,
            windows.first(where: { $0.id == activeWindowID })?.isMinimized == false {
             isAppSwitcherPresented = false
-            presentationMode = .workspace
+            presentationMode = .windows
             return true
         }
         guard let windowID = windows.max(by: { $0.zIndex < $1.zIndex })?.id else {
             return false
         }
         focus(windowID)
-        presentationMode = .workspace
+        presentationMode = .windows
         return true
     }
 
@@ -359,20 +372,9 @@ final class WorkspaceStore {
             isAppSwitcherPresented = false
             return
         }
-        isDockPresented = false
-        if presentationMode == .dashboard, !dismissDashboard() {
-            return
-        }
+        isDashboardPresented = false
+        presentationMode = .windows
         isAppSwitcherPresented.toggle()
-    }
-
-    func showDock() {
-        isAppSwitcherPresented = false
-        isDockPresented = true
-    }
-
-    func dismissDock() {
-        isDockPresented = false
     }
 
     func dismissAppSwitcher() {
@@ -526,14 +528,14 @@ final class WorkspaceStore {
         stackOrder = windows.map(\.id)
         stackTransform = .centered
         activeWindowID = windows.last?.id
-        presentationMode = windows.contains(where: { !$0.isMinimized }) ? .workspace : .dashboard
+        presentationMode = windows.contains(where: { !$0.isMinimized }) ? .windows : .widgets
+        isDashboardPresented = false
         expandedWindowIDs = []
         transformsBeforeExpansion = [:]
         smoothFollowSmoothers = [:]
         runtimeLayouts = [:]
         activePanelIDs = [:]
         controlMode = .pointer
-        isDockPresented = false
         isAppSwitcherPresented = false
         scheduleSave()
     }
@@ -738,7 +740,7 @@ final class SpatialWindowClient {
 extension SpatialAppLayout {
     static func defaultLayout(for window: WorkspaceWindow) -> Self {
         if case .youtube = window.source {
-            return .youtube
+            return .youtubeCompact
         }
         return SpatialAppLayout(panels: [
             SpatialPanelDescriptor(
@@ -752,6 +754,15 @@ extension SpatialAppLayout {
             )
         ])
     }
+
+    static let youtubeCompact = SpatialAppLayout(panels: [
+        SpatialPanelDescriptor(
+            id: .primary,
+            accessibilityLabel: "Spatial Video",
+            placement: SpatialPanelPlacement(width: 0.78, height: 0.46),
+            content: .primary
+        )
+    ])
 
     static let youtube = SpatialAppLayout(primaryPanelID: "video", panels: [
         SpatialPanelDescriptor(

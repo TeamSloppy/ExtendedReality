@@ -1,6 +1,6 @@
 name: ExtendReality
 options:
-  bundleIdPrefix: com.vladprusakov
+  bundleIdPrefix: xr.sloppy.team
   deploymentTarget:
     iOS: "18.0"
     macOS: "15.0"
@@ -18,6 +18,9 @@ packages:
   RoyalVNCKit:
     url: https://github.com/royalapplications/royalvnc.git
     revision: 337197afdb32020d3dfdb7d058989115b740cdc4
+  YouTubeKit:
+    url: https://github.com/alexeichhorn/YouTubeKit.git
+    revision: 7cc81901f9bbf2f9d2766bd8a54e128b974e4c94
 targets:
   ExtendReality:
     type: application
@@ -39,7 +42,7 @@ targets:
         NSPhotoLibraryUsageDescription: ExtendReality displays your photo and video library in the glasses workspace.
         NSPhotoLibraryAddUsageDescription: ExtendReality saves screenshots and recordings of the glasses display to your photo library.
         NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods to keep virtual windows stable while you move your head.
-        NSCameraUsageDescription: ExtendReality uses the camera for debug-only spatial tracking and lets you grant selected web apps camera access.
+        NSCameraUsageDescription: ExtendReality uses the camera for private on-device hand controls and lets you grant selected web apps camera access.
         NSMicrophoneUsageDescription: ExtendReality can listen on device for the Sloppy wake word while the app is open, record your Voice Mode requests, and let you grant selected web apps microphone access.
         NSSpeechRecognitionUsageDescription: ExtendReality uses on-device speech recognition to detect the Sloppy wake word while the app is open and to transcribe local Voice Mode input.
         NSLocationWhenInUseUsageDescription: ExtendReality uses your location while the app is open to provide location-aware spatial apps.
@@ -48,9 +51,15 @@ targets:
         NSFocusStatusUsageDescription: ExtendReality reads whether Focus is active so spatial apps can respect your availability.
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
-            CFBundleURLName: com.vladprusakov.ExtendReality.maps
+            CFBundleURLName: xr.sloppy.team.ExtendReality.maps
             CFBundleURLSchemes:
               - extendreality
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: xr.sloppy.team.ExtendReality.google-oauth
+            CFBundleURLSchemes:
+              - $(YOUTUBE_OAUTH_REVERSED_CLIENT_ID)
+        YouTubeOAuthClientID: $(YOUTUBE_OAUTH_CLIENT_ID)
+        YouTubeOAuthCallbackScheme: $(YOUTUBE_OAUTH_REVERSED_CLIENT_ID)
         ExtendRealityPWACatalogURL: "https://xr.sloppy.team/plugins/catalog.json"
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
@@ -67,21 +76,47 @@ targets:
           - UIInterfaceOrientationLandscapeRight
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality
+        PRODUCT_BUNDLE_IDENTIFIER: xr.sloppy.team.ExtendReality
         PRODUCT_NAME: ExtendReality
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SUPPORTS_MACCATALYST: NO
         CODE_SIGN_ENTITLEMENTS: ExtendReality/Resources/ExtendReality.entitlements
+        YOUTUBE_OAUTH_CLIENT_ID: 185337776045-ur5t0l5aigrhm36d5etj7o02dkc1uff3.apps.googleusercontent.com
+        YOUTUBE_OAUTH_REVERSED_CLIENT_ID: com.googleusercontent.apps.185337776045-ur5t0l5aigrhm36d5etj7o02dkc1uff3
     dependencies:
       - package: RoyalVNCKit
         product: RoyalVNCKit
         embed: true
         codeSign: true
+      - package: YouTubeKit
+        product: YouTubeKit
       - target: ExtendRealityWatch
         embed: true
       - target: ExtendRealityMapsShare
         embed: true
+      - target: ExtendRealityFocusIntents
+        embed: true
+  ExtendRealityFocusIntents:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ExtendRealityFocusIntents
+      - path: ExtendReality/Focus/ExtendRealityFocusProfile.swift
+    info:
+      path: ExtendRealityFocusIntents/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ExtendReality Focus
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.appintents-service
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: xr.sloppy.team.ExtendReality.focus-intents
+        PRODUCT_NAME: ExtendReality Focus
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        CODE_SIGN_ENTITLEMENTS: ExtendRealityFocusIntents/Resources/ExtendRealityFocusIntents.entitlements
+        SKIP_INSTALL: YES
   ExtendRealityMapsShare:
     type: app-extension
     platform: iOS
@@ -100,7 +135,7 @@ targets:
               NSExtensionActivationSupportsText: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.maps-share
+        PRODUCT_BUNDLE_IDENTIFIER: xr.sloppy.team.ExtendReality.maps-share
         PRODUCT_NAME: ExtendRealityMapsShare
         APPLICATION_EXTENSION_API_ONLY: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
@@ -117,15 +152,15 @@ targets:
         CFBundleDisplayName: ExtendReality
         NSMotionUsageDescription: ExtendReality uses Apple Watch motion to move the spatial pointer.
         WKApplication: true
-        WKCompanionAppBundleIdentifier: com.vladprusakov.ExtendReality
+        WKCompanionAppBundleIdentifier: xr.sloppy.team.ExtendReality
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
-            CFBundleURLName: com.vladprusakov.ExtendReality.watchkitapp
+            CFBundleURLName: xr.sloppy.team.ExtendReality.watchkitapp
             CFBundleURLSchemes:
               - extendreality
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: xr.sloppy.team.ExtendReality.watchkitapp
         PRODUCT_NAME: ExtendReality Watch
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SKIP_INSTALL: YES
@@ -145,7 +180,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.watchkitapp.widget
+        PRODUCT_BUNDLE_IDENTIFIER: xr.sloppy.team.ExtendReality.watchkitapp.widget
         PRODUCT_NAME: ExtendReality Watch Widget
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         SKIP_INSTALL: YES
@@ -163,19 +198,23 @@ targets:
       - path: ExtendReality/Workspace/WorkspaceLayoutProjection.swift
       - path: ExtendReality/ExternalDisplay/WindowProjection.swift
       - path: ExtendReality/Input/InputRouter.swift
+      - path: ExtendReality/Dashboard/DashboardTypes.swift
+      - path: ExtendReality/HandTracking
     info:
       path: ExtendRealityMac/Resources/Info.plist
       properties:
         CFBundleDisplayName: ExtendReality Mac
         LSApplicationCategoryType: public.app-category.utilities
         NSScreenCaptureUsageDescription: ExtendReality streams the displays you select to your spatial workspace.
+        NSCameraUsageDescription: ExtendReality uses the selected camera for private on-device hand controls.
+        NSCameraUseContinuityCameraDeviceType: true
         NSMotionUsageDescription: ExtendReality uses motion data from compatible AirPods as a fallback for Direct Mode head tracking.
         NSLocalNetworkUsageDescription: ExtendReality sends display streams to your iPhone on the local network.
         NSBonjourServices:
           - _extend-reality._tcp.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vladprusakov.ExtendReality.mac
+        PRODUCT_BUNDLE_IDENTIFIER: xr.sloppy.team.ExtendReality.mac
         PRODUCT_NAME: ExtendRealityMac
         CODE_SIGN_ENTITLEMENTS: ExtendRealityMac/Resources/ExtendRealityMac.entitlements
         ENABLE_HARDENED_RUNTIME: YES
@@ -257,6 +296,10 @@ schemes:
     test:
       targets:
         - ExtendRealityTests
+  ExtendRealityFocusIntents:
+    build:
+      targets:
+        ExtendRealityFocusIntents: all
   ExtendRealityWatch:
     build:
       targets:

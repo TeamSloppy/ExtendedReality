@@ -104,13 +104,59 @@ final class InputRouterTests: XCTestCase {
         XCTAssertEqual(target.commands, [.insertText("hello"), .back])
     }
 
+    func testMagnifyIsSentToActiveWindowAtSurfaceCursorPosition() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let id = UUID()
+        let size = CGSize(width: 1_000, height: 500)
+        let layout = WindowChromeLayout(size: size)
+        router.register(target, for: id)
+        router.updateWindowLayout(layout, for: id)
+        router.movePointer(toSurfacePosition: CGPoint(x: 0.25, y: 0.75), in: id)
+        target.commands.removeAll()
+
+        router.magnify(by: 1.15, in: id)
+
+        XCTAssertEqual(
+            target.commands,
+            [.magnify(scaleDelta: 1.15, normalizedPosition: CGPoint(x: 0.25, y: 0.75))]
+        )
+    }
+
+    func testMagnifyRejectsInvalidScale() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let id = UUID()
+        router.register(target, for: id)
+
+        router.magnify(by: 0, in: id)
+        router.magnify(by: .infinity, in: id)
+
+        XCTAssertTrue(target.commands.isEmpty)
+    }
+
     func testTextInputFocusRequestsAreObservable() {
         let router = InputRouter()
         let initialRequest = router.textInputFocusRequest
 
-        router.requestTextInputFocus()
+        router.requestTextInputFocus(initialText: "existing draft")
 
         XCTAssertNotEqual(router.textInputFocusRequest, initialRequest)
+        XCTAssertEqual(router.textInputDraft, "existing draft")
+    }
+
+    func testLiveTextInputIsMirroredAndSubmittedToFocusedTarget() {
+        let router = InputRouter()
+        let target = InputTargetSpy()
+        let id = UUID()
+        router.register(target, for: id)
+
+        router.requestTextInputFocus(initialText: "old")
+        router.replaceTextInput("corrected", in: id)
+        router.submitTextInput("corrected", in: id)
+
+        XCTAssertEqual(router.textInputDraft, "corrected")
+        XCTAssertEqual(target.commands, [.replaceText("corrected"), .submitText("corrected")])
     }
 
     func testPointerCoordinatesAreMappedIntoWindowSurface() {
@@ -263,7 +309,7 @@ final class InputRouterTests: XCTestCase {
             for: activeWindowID
         )
         router.updateStatusBarHitFrames([.dashboard: hitFrame], in: canvasSize)
-        router.updateDockHitFrames([.launch(dockItemID): hitFrame], in: canvasSize)
+        router.updateDockHitFrames([.focus(dockItemID): hitFrame], in: canvasSize)
         router.statusBarActionHandler = { receivedStatusAction = $0 }
         router.dockActionHandler = { receivedDockAction = $0 }
 
@@ -272,26 +318,9 @@ final class InputRouterTests: XCTestCase {
         router.pointerDown(in: activeWindowID)
         router.pointerUp(in: activeWindowID)
 
-        XCTAssertEqual(receivedDockAction, .launch(dockItemID))
+        XCTAssertEqual(receivedDockAction, .focus(dockItemID))
         XCTAssertNil(receivedStatusAction)
         XCTAssertTrue(target.commands.isEmpty)
-    }
-
-    func testDockBackActionCanBeClicked() {
-        let router = InputRouter()
-        var receivedDockAction: DockAction?
-        let canvasSize = CGSize(width: 1_000, height: 1_000)
-        router.updateDockHitFrames(
-            [.dismiss: CGRect(x: 100, y: 800, width: 120, height: 120)],
-            in: canvasSize
-        )
-        router.dockActionHandler = { receivedDockAction = $0 }
-
-        router.movePointer(to: CGPoint(x: 0.16, y: 0.85), in: nil)
-        router.pointerDown(in: nil)
-        router.pointerUp(in: nil)
-
-        XCTAssertEqual(receivedDockAction, .dismiss)
     }
 
     func testChromeButtonRunsActionWithoutClickingSurface() {
@@ -335,6 +364,53 @@ final class InputRouterTests: XCTestCase {
 
         XCTAssertEqual(router.chromeRegion(in: id), .resizeHandle)
         XCTAssertTrue(target.commands.isEmpty)
+    }
+
+    func testResizeHoverDetectsEveryWindowEdge() {
+        let layout = WindowChromeLayout(size: CGSize(width: 1_000, height: 500))
+
+        XCTAssertEqual(
+            layout.resizeHover(at: CGPoint(x: 0.01, y: 0.5))?.edge,
+            .leading
+        )
+        XCTAssertEqual(
+            layout.resizeHover(at: CGPoint(x: 0.99, y: 0.5))?.edge,
+            .trailing
+        )
+        XCTAssertEqual(
+            layout.resizeHover(at: CGPoint(x: 0.5, y: 0.16))?.edge,
+            .top
+        )
+        XCTAssertEqual(
+            layout.resizeHover(at: CGPoint(x: 0.5, y: 0.91))?.edge,
+            .bottom
+        )
+        XCTAssertNil(layout.resizeHover(at: CGPoint(x: 0.5, y: 0.5)))
+    }
+
+    func testResizeDeltaFollowsHoveredEdgeDirection() {
+        let horizontal = CGVector(dx: 0.2, dy: 0)
+        let vertical = CGVector(dx: 0, dy: 0.2)
+
+        XCTAssertEqual(WindowResizeEdge.leading.resizeDelta(from: horizontal), -0.2)
+        XCTAssertEqual(WindowResizeEdge.trailing.resizeDelta(from: horizontal), 0.2)
+        XCTAssertEqual(WindowResizeEdge.top.resizeDelta(from: vertical), -0.2)
+        XCTAssertEqual(WindowResizeEdge.bottom.resizeDelta(from: vertical), 0.2)
+    }
+
+    func testResizeIndicatorRemainsVisibleUntilDragEnds() {
+        let router = InputRouter()
+        let id = UUID()
+        router.updateWindowLayout(WindowChromeLayout(size: CGSize(width: 1_000, height: 500)), for: id)
+
+        router.movePointer(to: CGPoint(x: 0.99, y: 0.5), in: id)
+        XCTAssertEqual(router.beginWindowResize(in: id)?.edge, .trailing)
+
+        router.movePointer(to: CGPoint(x: 0.5, y: 0.5), in: id)
+        XCTAssertEqual(router.resizeIndicator(in: id)?.edge, .trailing)
+
+        router.endWindowResize()
+        XCTAssertNil(router.resizeIndicator(in: id))
     }
 
     func testPointerCanMoveWithSurfaceDispatchDisabledDuringResize() {
@@ -468,7 +544,7 @@ final class InputRouterTests: XCTestCase {
         let activeWindowID = UUID()
         let selectedWindowID = UUID()
         let target = InputTargetSpy()
-        var receivedWindowID: UUID?
+        var receivedAction: AppSwitcherAction?
         var receivedStatusAction: StatusBarAction?
         router.register(target, for: activeWindowID)
         router.updateWindowLayout(
@@ -480,32 +556,59 @@ final class InputRouterTests: XCTestCase {
             in: CGSize(width: 1_000, height: 1_000)
         )
         router.updateAppSwitcherHitFrames(
-            [selectedWindowID: CGRect(x: 100, y: 100, width: 200, height: 200)],
+            [.focus(selectedWindowID): CGRect(x: 100, y: 100, width: 200, height: 200)],
             in: CGSize(width: 1_000, height: 1_000)
         )
         router.statusBarActionHandler = { receivedStatusAction = $0 }
-        router.appSwitcherActionHandler = { receivedWindowID = $0 }
+        router.appSwitcherActionHandler = { receivedAction = $0 }
         router.setAppSwitcherPresented(true)
 
         router.movePointer(to: CGPoint(x: 0.2, y: 0.2), in: activeWindowID)
         router.pointerDown(in: activeWindowID)
         router.pointerUp(in: activeWindowID)
 
-        XCTAssertEqual(receivedWindowID, selectedWindowID)
+        XCTAssertEqual(receivedAction, .focus(selectedWindowID))
         XCTAssertNil(receivedStatusAction)
         XCTAssertTrue(target.commands.isEmpty)
     }
 
-    func testCursorHidesAfterInactivityAndReappearsAfterMovement() async throws {
+    func testAppSwitcherCloseTargetTakesPriorityOverCardTarget() {
+        let router = InputRouter()
+        let windowID = UUID()
+        var receivedAction: AppSwitcherAction?
+        router.updateAppSwitcherHitFrames(
+            [
+                .focus(windowID): CGRect(x: 100, y: 100, width: 400, height: 400),
+                .close(windowID): CGRect(x: 420, y: 120, width: 60, height: 60),
+            ],
+            in: CGSize(width: 1_000, height: 1_000)
+        )
+        router.appSwitcherActionHandler = { receivedAction = $0 }
+        router.setAppSwitcherPresented(true)
+
+        router.movePointer(to: CGPoint(x: 0.45, y: 0.15), in: nil)
+        router.pointerDown(in: nil)
+        router.pointerUp(in: nil)
+
+        XCTAssertEqual(receivedAction, .close(windowID))
+    }
+
+    func testCursorHidesAfterInactivityAndReappearsAfterPointerActivity() async throws {
         let router = InputRouter(cursorInactivityDuration: .milliseconds(30))
 
         try await Task.sleep(for: .milliseconds(60))
         XCTAssertFalse(router.isCursorVisible)
 
         router.movePointer(to: CGPoint(x: 0.5, y: 0.5), in: nil)
-        XCTAssertFalse(router.isCursorVisible)
+        XCTAssertTrue(router.isCursorVisible)
 
+        router.hideCursor()
         router.movePointer(to: CGPoint(x: 0.6, y: 0.5), in: nil)
+        XCTAssertTrue(router.isCursorVisible)
+
+        router.movePointer(to: CGPoint(x: 0.6, y: 0), in: nil)
+        router.hideCursor()
+        router.movePointer(delta: CGVector(dx: 0, dy: -0.1), in: nil)
         XCTAssertTrue(router.isCursorVisible)
     }
 

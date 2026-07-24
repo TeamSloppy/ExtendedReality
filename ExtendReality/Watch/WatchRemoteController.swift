@@ -12,6 +12,9 @@ private struct UncheckedSendable<Value>: @unchecked Sendable {
 final class WatchRemoteController: NSObject {
     private(set) var isWatchReachable = false
     private(set) var lastError: String?
+    private(set) var isPointerActive = false
+    private(set) var showsPointerGuide = true
+    private(set) var pointerWristLocation = WatchWristLocation.left
 
     @ObservationIgnored private let workspace: WorkspaceStore
     @ObservationIgnored private let inputRouter: InputRouter
@@ -79,6 +82,12 @@ final class WatchRemoteController: NSObject {
 
     private func handle(_ command: WatchControlCommand) {
         switch command {
+        case .pointerStarted(let showsGuide, let wristLocation):
+            isPointerActive = true
+            showsPointerGuide = showsGuide
+            pointerWristLocation = wristLocation
+        case .pointerStopped:
+            isPointerActive = false
         case .pointerDelta(let x, let y):
             inputRouter.movePointer(
                 delta: CGVector(dx: x, dy: y),
@@ -92,6 +101,11 @@ final class WatchRemoteController: NSObject {
         case .click:
             inputRouter.pointerDown(in: workspace.activeWindowID)
             inputRouter.pointerUp(in: workspace.activeWindowID)
+        case .doubleClick:
+            for _ in 0 ..< 2 {
+                inputRouter.pointerDown(in: workspace.activeWindowID)
+                inputRouter.pointerUp(in: workspace.activeWindowID)
+            }
         case .recenter:
             workspace.recenter()
             inputRouter.resetCursor()
@@ -129,7 +143,7 @@ final class WatchRemoteController: NSObject {
         switch command {
         case .focusWindow, .openWindow, .minimizeWindow, .closeWindow, .recenter, .toggleVoiceAssistant, .requestState:
             true
-        case .pointerDelta, .scroll, .click, .back, .togglePlayback, .seekPlayback:
+        case .pointerStarted, .pointerStopped, .pointerDelta, .scroll, .click, .doubleClick, .back, .togglePlayback, .seekPlayback:
             false
         }
     }
@@ -147,12 +161,18 @@ extension WatchRemoteController: WCSessionDelegate {
             guard let self else { return }
             self.lastError = errorDescription
             self.isWatchReachable = reachable
+            if !reachable {
+                self.isPointerActive = false
+            }
             self.syncState()
         }
     }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
-        Task { @MainActor [weak self] in self?.isWatchReachable = false }
+        Task { @MainActor [weak self] in
+            self?.isWatchReachable = false
+            self?.isPointerActive = false
+        }
     }
 
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
@@ -163,6 +183,9 @@ extension WatchRemoteController: WCSessionDelegate {
         let reachable = session.isReachable
         Task { @MainActor [weak self] in
             self?.isWatchReachable = reachable
+            if !reachable {
+                self?.isPointerActive = false
+            }
             if reachable { self?.syncState() }
         }
     }

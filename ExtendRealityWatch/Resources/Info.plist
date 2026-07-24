@@ -24,7 +24,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.vladprusakov.ExtendReality.watchkitapp</string>
+			<string>xr.sloppy.team.ExtendReality.watchkitapp</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>extendreality</string>
@@ -38,6 +38,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.vladprusakov.ExtendReality</string>
+	<string>xr.sloppy.team.ExtendReality</string>
 </dict>
 </plist>

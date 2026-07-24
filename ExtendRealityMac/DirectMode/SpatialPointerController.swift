@@ -5,6 +5,7 @@ import AppKit
 @MainActor
 final class SpatialPointerController {
     private(set) var isCapturing = false
+    private(set) var isHandInputActive = false
     private(set) var statusText = "Pointer released"
 
     private unowned let store: DirectModeStore
@@ -31,7 +32,8 @@ final class SpatialPointerController {
 
     func start() {
         guard !isCapturing else { return }
-        guard requestPermissions() else {
+        stopHandInput()
+        guard requestMousePermissions() else {
             statusText = "Accessibility and Input Monitoring are required"
             return
         }
@@ -66,7 +68,63 @@ final class SpatialPointerController {
         statusText = "Spatial pointer captured"
     }
 
+    @discardableResult
+    func startHandInput() -> Bool {
+        guard !isHandInputActive else { return true }
+        if isCapturing { stop() }
+        guard requestAccessibilityPermission() else {
+            statusText = "Accessibility is required for hand clicks"
+            return false
+        }
+        isHandInputActive = true
+        statusText = "Hand pointer active"
+        return true
+    }
+
+    func stopHandInput() {
+        guard isHandInputActive else { return }
+        finishDragIfNeeded()
+        isHandInputActive = false
+        activeSource = nil
+        lastSourcePoint = nil
+        statusText = "Pointer released"
+    }
+
+    func handleHandEvents(_ events: [HandPointerEvent]) {
+        guard isHandInputActive else { return }
+        for event in events {
+            switch event {
+            case .move(let position):
+                store.setVirtualCursor(to: position)
+                guard let target = currentTarget() else { continue }
+                activeSource = target.source
+                lastSourcePoint = target.point
+                let type: CGEventType = pressedButton == nil ? .mouseMoved : .leftMouseDragged
+                postMouse(type: type, point: target.point, button: .left, clickState: pressedButton == nil ? 0 : 1)
+            case .pointerDown:
+                guard pressedButton == nil, let target = currentTarget() else { continue }
+                pressedButton = .left
+                activeSource = target.source
+                lastSourcePoint = target.point
+                activate(target.source)
+                postMouse(type: .leftMouseDown, point: target.point, button: .left, clickState: 1)
+            case .pointerUp:
+                finishDragIfNeeded()
+            case .magnify(let scaleDelta, let center):
+                store.setVirtualCursor(to: center)
+                guard let target = currentTarget() else { continue }
+                activeSource = target.source
+                lastSourcePoint = target.point
+                activate(target.source)
+                postMagnification(scaleDelta, at: target.point)
+            case .visibilityChanged:
+                break
+            }
+        }
+    }
+
     func stop() {
+        if isHandInputActive { stopHandInput() }
         guard isCapturing || eventTap != nil else {
             statusText = "Pointer released"
             return
@@ -97,11 +155,13 @@ final class SpatialPointerController {
         }
     }
 
-    private func requestPermissions() -> Bool {
+    private func requestMousePermissions() -> Bool {
+        requestAccessibilityPermission() && (CGPreflightListenEventAccess() || CGRequestListenEventAccess())
+    }
+
+    private func requestAccessibilityPermission() -> Bool {
         let prompt = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        let accessibility = AXIsProcessTrustedWithOptions(prompt)
-        let inputMonitoring = CGPreflightListenEventAccess() || CGRequestListenEventAccess()
-        return accessibility && inputMonitoring
+        return AXIsProcessTrustedWithOptions(prompt)
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -190,6 +250,25 @@ final class SpatialPointerController {
     ) {
         guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { return }
         event.setIntegerValueField(.mouseEventClickState, value: clickState)
+        post(event)
+    }
+
+    private func postMagnification(_ scaleDelta: CGFloat, at point: CGPoint) {
+        guard scaleDelta.isFinite, scaleDelta > 0 else { return }
+        let wheelDelta = Int32((-log(Double(scaleDelta)) * 300).clamped(to: -1_200 ... 1_200))
+        guard wheelDelta != 0,
+              let event = CGEvent(
+                  scrollWheelEvent2Source: nil,
+                  units: .pixel,
+                  wheelCount: 1,
+                  wheel1: wheelDelta,
+                  wheel2: 0,
+                  wheel3: 0
+              ) else {
+            return
+        }
+        event.location = point
+        event.flags = .maskControl
         post(event)
     }
 

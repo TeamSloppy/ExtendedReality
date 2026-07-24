@@ -1,4 +1,5 @@
 export const YOUTUBE_READONLY_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly'
+export const DEFAULT_GOOGLE_OAUTH_CLIENT_ID = '185337776045-6rt3m67ei3kjp1o8o9dd61rdduv99685.apps.googleusercontent.com'
 
 let identityServicesPromise
 

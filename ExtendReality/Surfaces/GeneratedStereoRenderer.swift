@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 @preconcurrency import MetalKit
 import SwiftUI
 
@@ -234,7 +235,7 @@ struct GeneratedStereoRendererView: UIViewRepresentable {
                 disparityFraction: Float(session.stereoDisparityPercent / 100),
                 eyeSign: eyeSign,
                 hasDepth: depthTexture == nil ? 0 : 1,
-                padding: 0
+                rotation: session.videoFrameRotation.rawValue
             )
             encoder.setViewport(
                 MTLViewport(
@@ -334,6 +335,195 @@ private struct GeneratedStereoUniforms {
     var disparityFraction: Float
     var eyeSign: Float
     var hasDepth: UInt32
+    var rotation: UInt32
+}
+
+struct SDRVideoRendererView: UIViewRepresentable {
+    let player: AVPlayer
+    let rotation: VideoFrameRotation
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(player: player, rotation: rotation)
+    }
+
+    func makeUIView(context: Context) -> MTKView {
+        let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
+        view.backgroundColor = .black
+        view.colorPixelFormat = .bgra8Unorm_srgb
+        view.clearColor = MTLClearColorMake(0, 0, 0, 1)
+        view.framebufferOnly = true
+        view.enableSetNeedsDisplay = false
+        view.isPaused = false
+        view.preferredFramesPerSecond = 60
+        context.coordinator.attach(to: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: MTKView, context: Context) {
+        context.coordinator.update(player: player, rotation: rotation)
+    }
+
+    static func dismantleUIView(_ uiView: MTKView, coordinator: Coordinator) {
+        uiView.delegate = nil
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, MTKViewDelegate {
+        private var player: AVPlayer
+        private var rotation: VideoFrameRotation
+        private var attachedItem: AVPlayerItem?
+        private var output: AVPlayerItemVideoOutput?
+        private var commandQueue: MTLCommandQueue?
+        private var pipelineState: MTLRenderPipelineState?
+        private var textureCache: CVMetalTextureCache?
+        private var sourceTextureReference: CVMetalTexture?
+        private var sourcePixelBuffer: CVPixelBuffer?
+        private var sourceTexture: MTLTexture?
+
+        init(player: AVPlayer, rotation: VideoFrameRotation) {
+            self.player = player
+            self.rotation = rotation
+        }
+
+        func attach(to view: MTKView) {
+            guard let device = view.device else { return }
+            commandQueue = device.makeCommandQueue()
+            guard let library = device.makeDefaultLibrary(),
+                  let vertex = library.makeFunction(name: "generatedStereoVertex"),
+                  let fragment = library.makeFunction(name: "sdrVideoFragment") else { return }
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.label = "SDR Video Renderer"
+            descriptor.vertexFunction = vertex
+            descriptor.fragmentFunction = fragment
+            descriptor.colorAttachments[0].pixelFormat = view.colorPixelFormat
+            pipelineState = try? device.makeRenderPipelineState(descriptor: descriptor)
+            let status = CVMetalTextureCacheCreate(
+                kCFAllocatorDefault,
+                nil,
+                device,
+                nil,
+                &textureCache
+            )
+            guard status == kCVReturnSuccess, pipelineState != nil else { return }
+            attachOutput(to: player.currentItem)
+            view.delegate = self
+        }
+
+        func update(player: AVPlayer, rotation: VideoFrameRotation) {
+            self.player = player
+            self.rotation = rotation
+            if attachedItem !== player.currentItem {
+                attachOutput(to: player.currentItem)
+            }
+        }
+
+        func detach() {
+            if let output, let attachedItem {
+                attachedItem.remove(output)
+            }
+            attachedItem = nil
+            output = nil
+            sourceTextureReference = nil
+            sourcePixelBuffer = nil
+            sourceTexture = nil
+            if let textureCache {
+                CVMetalTextureCacheFlush(textureCache, 0)
+            }
+            textureCache = nil
+        }
+
+        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+        func draw(in view: MTKView) {
+            guard let output,
+                  let commandQueue,
+                  let pipelineState,
+                  let drawable = view.currentDrawable,
+                  let descriptor = view.currentRenderPassDescriptor else { return }
+            let itemTime = output.itemTime(forHostTime: CACurrentMediaTime())
+            if output.hasNewPixelBuffer(forItemTime: itemTime),
+               let pixelBuffer = output.copyPixelBuffer(
+                   forItemTime: itemTime,
+                   itemTimeForDisplay: nil
+               ) {
+                updateSourceTexture(from: pixelBuffer)
+            }
+
+            descriptor.colorAttachments[0].loadAction = .clear
+            descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+            descriptor.colorAttachments[0].storeAction = .store
+            guard let sourceTexture,
+                  let commandBuffer = commandQueue.makeCommandBuffer(),
+                  let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor)
+            else { return }
+
+            encoder.label = "SDR Video Frame"
+            encoder.setRenderPipelineState(pipelineState)
+            encoder.setFragmentTexture(sourceTexture, index: 0)
+            var uniforms = SDRVideoUniforms(
+                sourceSize: SIMD2(Float(sourceTexture.width), Float(sourceTexture.height)),
+                targetSize: SIMD2(Float(view.drawableSize.width), Float(view.drawableSize.height)),
+                rotation: rotation.rawValue,
+                padding: 0
+            )
+            encoder.setFragmentBytes(
+                &uniforms,
+                length: MemoryLayout<SDRVideoUniforms>.stride,
+                index: 0
+            )
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
+        }
+
+        private func attachOutput(to item: AVPlayerItem?) {
+            if let output, let attachedItem {
+                attachedItem.remove(output)
+            }
+            attachedItem = item
+            guard let item else {
+                output = nil
+                return
+            }
+            let output = AVPlayerItemVideoOutput(
+                pixelBufferAttributes: SDRVideoOutputSettings.pixelBufferAttributes
+            )
+            item.add(output)
+            self.output = output
+        }
+
+        private func updateSourceTexture(from pixelBuffer: CVPixelBuffer) {
+            guard let textureCache else { return }
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            var textureReference: CVMetalTexture?
+            let status = CVMetalTextureCacheCreateTextureFromImage(
+                kCFAllocatorDefault,
+                textureCache,
+                pixelBuffer,
+                nil,
+                .bgra8Unorm,
+                width,
+                height,
+                0,
+                &textureReference
+            )
+            guard status == kCVReturnSuccess,
+                  let textureReference,
+                  let texture = CVMetalTextureGetTexture(textureReference) else { return }
+            sourcePixelBuffer = pixelBuffer
+            sourceTextureReference = textureReference
+            sourceTexture = texture
+        }
+    }
+}
+
+private struct SDRVideoUniforms {
+    var sourceSize: SIMD2<Float>
+    var targetSize: SIMD2<Float>
+    var rotation: UInt32
     var padding: UInt32
 }
 

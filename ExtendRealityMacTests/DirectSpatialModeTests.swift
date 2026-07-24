@@ -127,6 +127,28 @@ struct DirectSpatialModeTests {
         ) == nil)
     }
 
+    @MainActor
+    @Test
+    func handPointerCoordinatesClampToCanvas() {
+        let store = DirectModeStore(storesDataInMemory: true)
+
+        store.setVirtualCursor(to: CGPoint(x: -0.4, y: 1.7))
+
+        #expect(store.virtualCursor == CGPoint(x: 0, y: 1))
+    }
+
+    @MainActor
+    @Test
+    func switchingPointerInputModeReleasesPreviousSource() {
+        let store = DirectModeStore(storesDataInMemory: true)
+
+        store.setPointerInputMode(.hands)
+
+        #expect(store.pointerInputMode == .hands)
+        #expect(!store.isPointerCaptured)
+        #expect(store.inputStatus == "Pointer released")
+    }
+
     @Test
     func macCaptureReferencePersistsWithWorkspaceWindow() throws {
         let reference = MacCaptureSourceReference.application(bundleIdentifier: "com.apple.Preview")

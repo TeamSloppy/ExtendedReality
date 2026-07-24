@@ -90,7 +90,16 @@ final class RoyalVNCSession: NSObject, RemoteDesktopSession {
             let point = framebufferPoint(for: CGPoint(x: 0.5, y: 0.5))
             let wheel: VNCMouseWheel = delta.dy > 0 ? .down : .up
             connection.mouseWheel(wheel, x: point.x, y: point.y, steps: 1)
+        case .magnify:
+            break
         case .insertText(let text):
+            for keyCode in VNCKeyCode.keyCodesFrom(characters: text) {
+                connection.keyDown(keyCode)
+                connection.keyUp(keyCode)
+            }
+        case .replaceText:
+            break
+        case .submitText(let text):
             for keyCode in VNCKeyCode.keyCodesFrom(characters: text) {
                 connection.keyDown(keyCode)
                 connection.keyUp(keyCode)

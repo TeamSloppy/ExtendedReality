@@ -173,6 +173,67 @@ final class WindowProjectionTests: XCTestCase {
         )
     }
 
+    func testSpatialChromeStaysVisibleWhileTracking() {
+        let cursor = CGPoint(x: 0.5, y: 0.5)
+
+        XCTAssertTrue(
+            SpatialChromeVisibility.showsStatusBar(
+                isTracking: true,
+                cursor: cursor
+            )
+        )
+        XCTAssertTrue(
+            SpatialChromeVisibility.showsDock(
+                isTracking: true,
+                cursor: cursor
+            )
+        )
+    }
+
+    func testSpatialChromeRevealsAtTopAndBottomEdgesWithoutTracking() {
+        XCTAssertTrue(
+            SpatialChromeVisibility.showsStatusBar(
+                isTracking: false,
+                cursor: CGPoint(x: 0.5, y: 0.05)
+            )
+        )
+        XCTAssertFalse(
+            SpatialChromeVisibility.showsDock(
+                isTracking: false,
+                cursor: CGPoint(x: 0.5, y: 0.05)
+            )
+        )
+        XCTAssertTrue(
+            SpatialChromeVisibility.showsDock(
+                isTracking: false,
+                cursor: CGPoint(x: 0.5, y: 0.95)
+            )
+        )
+        XCTAssertFalse(
+            SpatialChromeVisibility.showsStatusBar(
+                isTracking: false,
+                cursor: CGPoint(x: 0.5, y: 0.95)
+            )
+        )
+    }
+
+    func testSpatialChromeRemainsHiddenAwayFromEdges() {
+        let center = CGPoint(x: 0.5, y: 0.5)
+
+        XCTAssertFalse(
+            SpatialChromeVisibility.showsStatusBar(
+                isTracking: false,
+                cursor: center
+            )
+        )
+        XCTAssertFalse(
+            SpatialChromeVisibility.showsDock(
+                isTracking: false,
+                cursor: center
+            )
+        )
+    }
+
     func testUltrawideWindowMatchesStreamAspectWithoutLetterboxing() {
         let viewport = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
         let projected = WindowProjection.frame(for: .macStream, in: viewport)
@@ -371,6 +432,73 @@ final class MediaSessionTests: XCTestCase {
 
         XCTAssertFalse(MediaLibraryFilter.videos.includes(.image))
         XCTAssertTrue(MediaLibraryFilter.videos.includes(.video))
+
+        XCTAssertFalse(MediaLibraryFilter.spatial.includes(.image))
+        XCTAssertTrue(MediaLibraryFilter.spatial.includes(
+            mediaType: .image,
+            mediaSubtypes: .spatialMedia
+        ))
+        XCTAssertTrue(MediaLibraryFilter.spatial.includes(
+            mediaType: .video,
+            mediaSubtypes: .spatialMedia
+        ))
+        XCTAssertFalse(MediaLibraryFilter.spatial.includes(
+            mediaType: .audio,
+            mediaSubtypes: .spatialMedia
+        ))
+    }
+
+    func testGallerySurfaceHitTargetsMatchSidebarAndViewerControls() {
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.sidebarTarget(at: CGPoint(x: 0.1, y: 0.18)),
+            .filter(.all)
+        )
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.sidebarTarget(at: CGPoint(x: 0.1, y: 0.55)),
+            .filter(.spatial)
+        )
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.sidebarTarget(at: CGPoint(x: 0.1, y: 0.68)),
+            .files
+        )
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.photoViewerTarget(at: CGPoint(x: 0.5, y: 0.9)),
+            .next
+        )
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.videoViewerTarget(at: CGPoint(x: 0.6, y: 0.9)),
+            .toggleSpatialVideo
+        )
+        XCTAssertNil(
+            MediaSurfaceInteractionLayout.videoViewerTarget(at: CGPoint(x: 0.4, y: 0.9))
+        )
+
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.photoLibraryIndex(
+                at: CGPoint(x: 0.3, y: 0.2),
+                columns: 5,
+                rows: 3,
+                firstVisibleIndex: 10
+            ),
+            10
+        )
+        XCTAssertEqual(
+            MediaSurfaceInteractionLayout.photoLibraryIndex(
+                at: CGPoint(x: 0.9, y: 0.8),
+                columns: 5,
+                rows: 3,
+                firstVisibleIndex: 10
+            ),
+            24
+        )
+        XCTAssertNil(
+            MediaSurfaceInteractionLayout.photoLibraryIndex(
+                at: CGPoint(x: 0.1, y: 0.2),
+                columns: 5,
+                rows: 3,
+                firstVisibleIndex: 0
+            )
+        )
     }
 
     func testOrdinaryPhotoUsesTwoDimensionalPresentation() throws {

@@ -142,7 +142,7 @@ final class BrowserWindowSession: InputTarget {
     private(set) var spatialSurfaceSize = CGSize(width: 960, height: 540)
 
     @ObservationIgnored private let sessionFactory: SessionFactory
-    @ObservationIgnored private let textInputFocusHandler: () -> Void
+    @ObservationIgnored private let textInputFocusHandler: (String) -> Void
     @ObservationIgnored private var pressedChromeTarget: BrowserChromeTarget?
     @ObservationIgnored private var pressedContentSession: BrowserSession?
     @ObservationIgnored private var isAddressInputActive = false
@@ -150,7 +150,7 @@ final class BrowserWindowSession: InputTarget {
     init(
         initialURL: String,
         loadsContent: Bool = true,
-        textInputFocusHandler: @escaping () -> Void = {},
+        textInputFocusHandler: @escaping (String) -> Void = { _ in },
         sessionFactory: @escaping SessionFactory = {
             BrowserSession(initialURL: $0, loadsContent: $1)
         }
@@ -246,11 +246,18 @@ final class BrowserWindowSession: InputTarget {
     }
 
     func handle(_ command: InputCommand) {
-        if case .insertText(let text) = command, isAddressInputActive {
-            isAddressInputActive = false
-            activeSession.address = text
-            loadActive()
-            return
+        if isAddressInputActive {
+            switch command {
+            case .replaceText(let text):
+                activeSession.address = text
+                return
+            case .insertText(let text), .submitText(let text):
+                activeSession.address = text
+                loadActive()
+                return
+            default:
+                break
+            }
         }
         switch command {
         case .pointerMoved(let position):
@@ -259,7 +266,7 @@ final class BrowserWindowSession: InputTarget {
             handlePointerDown(position)
         case .pointerUp(let position):
             handlePointerUp(position)
-        case .scroll, .insertText, .back, .media:
+        case .scroll, .magnify, .insertText, .replaceText, .submitText, .back, .media:
             activeSession.handle(command)
         }
     }
@@ -343,6 +350,6 @@ final class BrowserWindowSession: InputTarget {
     private func activateSpatialAddressInput() {
         isAddressInputActive = true
         requestAddressFocus()
-        textInputFocusHandler()
+        textInputFocusHandler(activeSession.address)
     }
 }

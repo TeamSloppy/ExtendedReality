@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import Translation
 import UniformTypeIdentifiers
 
 enum ControllerSheet: String, Identifiable {
@@ -43,6 +44,10 @@ struct ControllerRootView: View {
             }
         }
         .onChange(of: selectedPhoto, handleSelectedPhotoChange)
+        .onChange(of: activeGallerySession?.fileImportRequest) { oldRequest, newRequest in
+            guard newRequest != nil, newRequest != oldRequest else { return }
+            isImportingFile = true
+        }
         .sheet(item: $presentedSheet) { sheet in
             Group {
                 switch sheet {
@@ -69,7 +74,12 @@ struct ControllerRootView: View {
             environment.watchRemote.syncState()
         }
         .onChange(of: inputRouter.textInputFocusRequest) {
+            keyboardText = inputRouter.textInputDraft
             isKeyboardFocused = true
+        }
+        .onChange(of: keyboardText) { _, newValue in
+            guard newValue != inputRouter.textInputDraft else { return }
+            inputRouter.replaceTextInput(newValue, in: workspace.activeWindowID)
         }
         .onChange(of: environment.voiceModeActivationRouter.pendingRequest?.id, initial: true) {
             _, requestID in
@@ -79,21 +89,38 @@ struct ControllerRootView: View {
         }
         .onDisappear {
             laserController.stop()
+            environment.handTracking.stop()
             environment.hardwareMouseInput.setCaptureEnabled(false)
+        }
+        .translationTask(
+            source: environment.liveTranslation.sourceLanguage.translationLanguage,
+            target: environment.liveTranslation.targetLanguage.translationLanguage
+        ) { session in
+            await environment.liveTranslation.consumeTranslations(using: session)
         }
     }
 
     private var controllerContent: some View {
         GeometryReader { proxy in
-            if proxy.size.width > proxy.size.height {
-                landscapeControllerContent
-                    .toolbar(.hidden, for: .navigationBar)
+            if workspace.isExternalDisplayConnected {
+                if proxy.size.width > proxy.size.height {
+                    landscapeControllerContent
+                        .toolbar(.hidden, for: .navigationBar)
+                } else {
+                    portraitControllerContent
+                        .toolbar(.visible, for: .navigationBar)
+                        .toolbar {
+                            controllerHeader
+                        }
+                }
             } else {
-                portraitControllerContent
-                    .toolbar(.visible, for: .navigationBar)
-                    .toolbar {
-                        controllerHeader
+                DeviceWorkspaceView(
+                    environment: environment,
+                    onShowControls: {
+                        presentedSheet = .controls
                     }
+                )
+                .toolbar(.hidden, for: .navigationBar)
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -139,16 +166,24 @@ struct ControllerRootView: View {
     }
 
     private var trackpad: some View {
-        TrackpadView(
-            workspace: workspace,
-            dashboard: environment.dashboard,
-            inputRouter: inputRouter,
-            mode: inputMode,
-            laserController: laserController,
-            onShowDashboard: environment.showDashboard,
-            onShowDock: environment.showDock,
-            onCenterWindow: environment.centerActiveWindow
-        )
+        Group {
+            if inputMode == .hands {
+                IOSHandControlView(
+                    controller: environment.handTracking,
+                    isExternalDisplayConnected: workspace.isExternalDisplayConnected
+                )
+            } else {
+                TrackpadView(
+                    workspace: workspace,
+                    dashboard: environment.dashboard,
+                    inputRouter: inputRouter,
+                    mode: inputMode,
+                    laserController: laserController,
+                    onShowDashboard: environment.toggleDashboard,
+                    onCenterWindow: environment.centerActiveWindow
+                )
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -205,9 +240,15 @@ struct ControllerRootView: View {
     private func handleInputModeChange(_ oldMode: ControllerInputMode, _ newMode: ControllerInputMode) {
         workspace.controlMode = .pointer
         ControllerHaptics.selection()
-        if newMode == .laser {
+        if newMode == .hands {
+            laserController.stop()
+            environment.hardwareMouseInput.setCaptureEnabled(false)
+            Task { await environment.handTracking.start() }
+        } else if newMode == .laser {
+            environment.handTracking.stop()
             laserController.start(workspace: workspace, inputRouter: inputRouter)
         } else {
+            environment.handTracking.stop()
             laserController.stop()
         }
     }
@@ -248,6 +289,7 @@ struct ControllerRootView: View {
 
         ToolbarItem(placement: .topBarTrailing) {
             Button {
+                if inputMode == .hands { inputMode = .trackpad }
                 environment.hardwareMouseInput.toggleCapture()
                 ControllerHaptics.selection()
             } label: {
@@ -384,6 +426,7 @@ struct ControllerRootView: View {
                         : "computermouse",
                     isSelected: environment.hardwareMouseInput.isCaptureEnabled
                 ) {
+                    if inputMode == .hands { inputMode = .trackpad }
                     environment.hardwareMouseInput.toggleCapture()
                     ControllerHaptics.selection()
                 }
@@ -625,7 +668,8 @@ struct ControllerRootView: View {
 
     private func sendKeyboardText() {
         guard !keyboardText.isEmpty else { return }
-        inputRouter.insertText(keyboardText, in: workspace.activeWindowID)
+        inputRouter.submitTextInput(keyboardText, in: workspace.activeWindowID)
+        inputRouter.clearTextInputDraft()
         keyboardText = ""
         ControllerHaptics.click()
     }
@@ -778,6 +822,7 @@ private struct ControllerToolsSheet: View {
         case dashboard
         case pwaStore
         case macSources
+        case liveTranslation
 
         var id: String { rawValue }
     }
@@ -800,6 +845,7 @@ private struct ControllerToolsSheet: View {
                     captureControls
                     launcher
                     pwaStoreSection
+                    liveTranslationSection
                     dashboardSection
                     windowStrip
 
@@ -846,6 +892,8 @@ private struct ControllerToolsSheet: View {
                 PWAStoreView(environment: environment)
             case .macSources:
                 MacSourcePickerView(environment: environment)
+            case .liveTranslation:
+                LiveTranslationSettingsView(translation: environment.liveTranslation)
             }
         }
         .alert("Mac connection failed", isPresented: macConnectionErrorPresented) {
@@ -1089,6 +1137,29 @@ private struct ControllerToolsSheet: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 
+    private var liveTranslationSection: some View {
+        HStack(spacing: 14) {
+            Image(systemName: environment.liveTranslation.state.isActive ? "waveform.and.mic" : "captions.bubble.fill")
+                .font(.title2)
+                .foregroundStyle(.cyan)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Live Translation")
+                    .font(.headline)
+                Text("\(environment.liveTranslation.languagePairLabel) · on-device subtitles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Configure", systemImage: "chevron.right") {
+                destination = .liveTranslation
+                ControllerHaptics.selection()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
     private var pwaStoreSection: some View {
         HStack(spacing: 14) {
             Image(systemName: "shippingbox.fill")
@@ -1218,7 +1289,7 @@ private struct ControllerToolsSheet: View {
 
             Text(
                 workspace.layoutMode == .stack
-                    ? "Stack temporarily anchors every window. Drag horizontally to reorder, vertically to move the row, and pinch to change its distance."
+                    ? "Stack temporarily anchors every window. Drag horizontally to reorder, vertically to move the row, pinch to resize, and scroll to change its distance."
                     : "Anchor stays in world space. Smooth Follow eases the window toward your view. Follow keeps it locked to your view."
             )
             .font(.caption)
@@ -1281,7 +1352,7 @@ private struct ControllerToolsSheet: View {
                 .buttonStyle(.bordered)
             }
 
-            Text("You can also pinch anywhere on the trackpad.")
+            Text("In Move mode, scroll anywhere on the trackpad to change distance.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1318,8 +1389,7 @@ private struct ActiveWindowControls: View {
             )
         case .youtube:
             YouTubeControlsView(
-                session: environment.surfaces.youtubeSession(for: window.id),
-                apiClient: environment.youtubeAPI
+                session: environment.surfaces.youtubeSession(for: window.id)
             )
         case .remoteDesktop(let address):
             if let address, SurfaceRegistry.isWebStreamAddress(address) {

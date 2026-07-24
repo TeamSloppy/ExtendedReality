@@ -4,6 +4,25 @@ import Observation
 import WatchConnectivity
 import WatchKit
 
+enum WatchPointerInputMode: String {
+    case wrist
+    case trackpad
+
+    var title: String {
+        switch self {
+        case .wrist: "Wrist"
+        case .trackpad: "Trackpad"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .wrist: "gyroscope"
+        case .trackpad: "hand.draw"
+        }
+    }
+}
+
 private struct UncheckedSendable<Value>: @unchecked Sendable {
     let value: Value
 }
@@ -11,6 +30,9 @@ private struct UncheckedSendable<Value>: @unchecked Sendable {
 @MainActor
 @Observable
 final class WatchControlModel: NSObject {
+    static let pointerGuideDefaultsKey = "watchPointer.showsGuide"
+    static let pointerInputModeDefaultsKey = "watchPointer.inputMode"
+
     private(set) var isReachable = false
     private(set) var isPointerActive = false
     private(set) var motionAvailable = false
@@ -22,13 +44,35 @@ final class WatchControlModel: NSObject {
     )
     var sensitivity = 1.0
     var invertVertical = false
+    var pointerInputMode: WatchPointerInputMode {
+        didSet {
+            defaults.set(pointerInputMode.rawValue, forKey: Self.pointerInputModeDefaultsKey)
+            if pointerInputMode == .trackpad {
+                stopPointer()
+            }
+        }
+    }
+    var showsPointerGuide: Bool {
+        didSet {
+            defaults.set(showsPointerGuide, forKey: Self.pointerGuideDefaultsKey)
+            if isPointerActive {
+                sendPointerStarted()
+            }
+        }
+    }
 
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let motionManager = CMMotionManager()
     @ObservationIgnored private var session: WCSession?
     @ObservationIgnored private var pointerMotion = WristPointerMotionProcessor()
     @ObservationIgnored private var isPreview = false
 
     override init() {
+        let defaults = UserDefaults.standard
+        self.defaults = defaults
+        pointerInputMode = defaults.string(forKey: Self.pointerInputModeDefaultsKey)
+            .flatMap(WatchPointerInputMode.init(rawValue:)) ?? .wrist
+        showsPointerGuide = defaults.object(forKey: Self.pointerGuideDefaultsKey) as? Bool ?? true
         super.init()
         motionAvailable = motionManager.isDeviceMotionAvailable
 
@@ -42,6 +86,9 @@ final class WatchControlModel: NSObject {
 
 #if DEBUG
     init(previewSnapshot: WatchWorkspaceSnapshot) {
+        defaults = .standard
+        pointerInputMode = .wrist
+        showsPointerGuide = true
         super.init()
         snapshot = previewSnapshot
         isReachable = true
@@ -76,6 +123,7 @@ final class WatchControlModel: NSObject {
     }
 
     func startPointer() {
+        guard pointerInputMode == .wrist else { return }
         guard motionManager.isDeviceMotionAvailable else {
             motionAvailable = false
             return
@@ -90,9 +138,13 @@ final class WatchControlModel: NSObject {
             }
         }
         isPointerActive = true
+        sendPointerStarted()
     }
 
     func stopPointer() {
+        if isPointerActive {
+            send(.pointerStopped)
+        }
         motionManager.stopDeviceMotionUpdates()
         isPointerActive = false
         pointerMotion.reset()
@@ -101,6 +153,24 @@ final class WatchControlModel: NSObject {
     func click() {
         send(.click)
         WKInterfaceDevice.current().play(.click)
+    }
+
+    func doubleClick() {
+        send(.doubleClick)
+        WKInterfaceDevice.current().play(.click)
+    }
+
+    func moveTrackpad(by delta: CGSize, in size: CGSize) {
+        guard pointerInputMode == .trackpad,
+              size.width > 0,
+              size.height > 0 else { return }
+        let gain = 1.35
+        send(
+            .pointerDelta(
+                x: Double(delta.width / size.width) * gain,
+                y: Double(delta.height / size.height) * gain
+            )
+        )
     }
 
     func scroll(crownDelta: Double) {
@@ -151,6 +221,18 @@ final class WatchControlModel: NSObject {
 
     func refresh() {
         send(.requestState, expectsState: true)
+    }
+
+    private func sendPointerStarted() {
+        let wristLocation: WatchWristLocation = WKInterfaceDevice.current().wristLocation == .left
+            ? .left
+            : .right
+        send(
+            .pointerStarted(
+                showsGuide: showsPointerGuide,
+                wristLocation: wristLocation
+            )
+        )
     }
 
     private func consume(_ motion: CMDeviceMotion?) {
@@ -259,15 +341,26 @@ extension WatchControlModel: WCSessionDelegate {
             guard let self else { return }
             self.isReachable = reachable
             self.apply(context.value)
-            if activationState == .activated { self.refresh() }
+            if activationState == .activated {
+                self.refresh()
+                if self.isPointerActive {
+                    self.sendPointerStarted()
+                }
+            }
         }
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         let reachable = session.isReachable
         Task { @MainActor [weak self] in
-            self?.isReachable = reachable
-            if reachable { self?.refresh() }
+            guard let self else { return }
+            self.isReachable = reachable
+            if reachable {
+                self.refresh()
+                if self.isPointerActive {
+                    self.sendPointerStarted()
+                }
+            }
         }
     }
 

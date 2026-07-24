@@ -35,6 +35,7 @@ enum MediaLibraryFilter: String, CaseIterable, Hashable, Identifiable, Sendable 
     case all
     case photos
     case videos
+    case spatial
 
     var id: String { rawValue }
 
@@ -43,6 +44,7 @@ enum MediaLibraryFilter: String, CaseIterable, Hashable, Identifiable, Sendable 
         case .all: "All"
         case .photos: "Photos"
         case .videos: "Videos"
+        case .spatial: "Spatial"
         }
     }
 
@@ -51,10 +53,15 @@ enum MediaLibraryFilter: String, CaseIterable, Hashable, Identifiable, Sendable 
         case .all: "photo.on.rectangle.angled"
         case .photos: "photo"
         case .videos: "video"
+        case .spatial: "view.3d"
         }
     }
 
     func includes(_ mediaType: PHAssetMediaType) -> Bool {
+        includes(mediaType: mediaType, mediaSubtypes: [])
+    }
+
+    func includes(mediaType: PHAssetMediaType, mediaSubtypes: PHAssetMediaSubtype) -> Bool {
         switch self {
         case .all:
             mediaType == .image || mediaType == .video
@@ -62,11 +69,90 @@ enum MediaLibraryFilter: String, CaseIterable, Hashable, Identifiable, Sendable 
             mediaType == .image
         case .videos:
             mediaType == .video
+        case .spatial:
+            (mediaType == .image || mediaType == .video)
+                && mediaSubtypes.contains(.spatialMedia)
         }
+    }
+
+    func includes(_ asset: PHAsset) -> Bool {
+        includes(mediaType: asset.mediaType, mediaSubtypes: asset.mediaSubtypes)
     }
 }
 
-struct SpatialPhotoStereoPair {
+enum MediaSurfaceHitTarget: Equatable {
+    case filter(MediaLibraryFilter)
+    case files
+    case asset(String)
+    case previous
+    case next
+    case close
+    case togglePlayback
+    case toggleSpatialVideo
+}
+
+struct MediaSurfaceInteractionLayout {
+    static let sidebarWidth: CGFloat = 0.22
+    static let sidebarHeaderHeight: CGFloat = 0.16
+    static let sidebarRowHeight: CGFloat = 0.12
+    static let viewerControlsTop: CGFloat = 0.82
+
+    static func sidebarTarget(at position: CGPoint) -> MediaSurfaceHitTarget? {
+        guard position.x >= 0,
+              position.x <= sidebarWidth,
+              position.y >= sidebarHeaderHeight else { return nil }
+        let row = Int((position.y - sidebarHeaderHeight) / sidebarRowHeight)
+        return switch row {
+        case 0: .filter(.all)
+        case 1: .filter(.photos)
+        case 2: .filter(.videos)
+        case 3: .filter(.spatial)
+        case 4: .files
+        default: nil
+        }
+    }
+
+    static func photoViewerTarget(at position: CGPoint) -> MediaSurfaceHitTarget? {
+        guard position.y >= viewerControlsTop else { return nil }
+        return switch position.x {
+        case 0 ..< (1.0 / 3.0): .previous
+        case (1.0 / 3.0) ..< (2.0 / 3.0): .next
+        case (2.0 / 3.0) ... 1: .close
+        default: nil
+        }
+    }
+
+    static func videoViewerTarget(at position: CGPoint) -> MediaSurfaceHitTarget? {
+        guard position.y >= viewerControlsTop else { return nil }
+        return switch position.x {
+        case 0 ..< 0.25: .togglePlayback
+        case 0.5 ..< 0.75: .toggleSpatialVideo
+        case 0.75 ... 1: .close
+        default: nil
+        }
+    }
+
+    static func photoLibraryIndex(
+        at position: CGPoint,
+        columns: Int,
+        rows: Int,
+        firstVisibleIndex: Int
+    ) -> Int? {
+        guard columns > 0,
+              rows > 0,
+              position.x >= sidebarWidth,
+              position.x <= 1,
+              position.y >= 0,
+              position.y <= 1 else { return nil }
+
+        let gridX = (position.x - sidebarWidth) / (1 - sidebarWidth)
+        let column = min(columns - 1, Int(gridX * CGFloat(columns)))
+        let row = min(rows - 1, Int(position.y * CGFloat(rows)))
+        return firstVisibleIndex + row * columns + column
+    }
+}
+
+struct SpatialPhotoStereoPair: @unchecked Sendable {
     let left: UIImage
     let right: UIImage
 }
@@ -83,8 +169,24 @@ enum MediaImportError: LocalizedError {
     }
 }
 
+private struct SendableAVPlayerItem: @unchecked Sendable {
+    let value: AVPlayerItem
+
+    init(_ value: AVPlayerItem) {
+        self.value = value
+    }
+}
+
+private struct SendableImage: @unchecked Sendable {
+    let value: UIImage
+
+    init(_ value: UIImage) {
+        self.value = value
+    }
+}
+
 enum SpatialPhotoDecoder {
-    struct DecodedPhoto {
+    struct DecodedPhoto: @unchecked Sendable {
         let primary: UIImage
         let stereoPair: SpatialPhotoStereoPair?
     }
@@ -173,6 +275,9 @@ final class MediaSession: InputTarget {
     private(set) var spatialPhoto: SpatialPhotoStereoPair?
     private(set) var fileName: String?
     private(set) var isPlaying = false
+    private(set) var videoDuration: TimeInterval = 0
+    private(set) var isSourceSpatialVideo = false
+    private(set) var videoFrameRotation: VideoFrameRotation = .none
     private(set) var presentationMode: MediaPresentationMode = .twoDimensional
     private(set) var generatedStereoStatus: GeneratedStereoStatus = .idle
     private(set) var stereoDisparityPercent = StereoDepthSettings.defaultDisparityPercent
@@ -183,7 +288,10 @@ final class MediaSession: InputTarget {
     private(set) var photoLibraryThumbnails: [String: UIImage] = [:]
     private(set) var isLoadingPhotoLibrary = false
     private(set) var photoLibraryFirstVisibleIndex = 0
-    @ObservationIgnored private(set) var player: AVPlayer?
+    private(set) var selectedPhotoLibraryAssetID: String?
+    private(set) var pendingPhotoLibraryAssetID: String?
+    private(set) var fileImportRequest: UUID?
+    private(set) var player: AVPlayer?
     @ObservationIgnored private(set) var latestStereoDepthFrame: StereoDepthFrame?
     @ObservationIgnored private var stereoFrameSource: (any StereoFrameSource)?
     @ObservationIgnored private let depthEstimator = StereoDepthEstimator()
@@ -194,10 +302,14 @@ final class MediaSession: InputTarget {
     @ObservationIgnored private var isFullSideBySideDisplayReady = false
     @ObservationIgnored private let photoImageManager = PHCachingImageManager()
     @ObservationIgnored private var allPhotoLibraryAssets: [PHAsset] = []
+    @ObservationIgnored private var hasLoadedPhotoLibrary = false
     @ObservationIgnored private var requestedThumbnailIDs: Set<String> = []
+    @ObservationIgnored private var thumbnailRequestIDs: [String: PHImageRequestID] = [:]
+    @ObservationIgnored private var mediaRequestID: PHImageRequestID?
     @ObservationIgnored private var photoLibraryColumns = 5
     @ObservationIgnored private var photoLibraryVisibleRows = 3
-    @ObservationIgnored private var pressedPhotoAssetID: String?
+    @ObservationIgnored private var photoLibraryLoadGeneration: UInt64 = 0
+    @ObservationIgnored private var pressedTarget: MediaSurfaceHitTarget?
     @ObservationIgnored private let playbackStateDidChange: () -> Void
 
     init(playbackStateDidChange: @escaping () -> Void = {}) {
@@ -214,6 +326,20 @@ final class MediaSession: InputTarget {
         image == nil && player == nil
     }
 
+    var canShowPreviousMedia: Bool {
+        guard let selectedPhotoLibraryIndex else { return false }
+        return selectedPhotoLibraryIndex > 0
+    }
+
+    var canShowNextMedia: Bool {
+        guard let selectedPhotoLibraryIndex else { return false }
+        return selectedPhotoLibraryIndex < photoLibraryAssets.index(before: photoLibraryAssets.endIndex)
+    }
+
+    var formattedVideoDuration: String {
+        videoDuration.formattedDuration
+    }
+
     var availablePresentationModes: [MediaPresentationMode] {
         if isSpatialPhoto { return [.twoDimensional, .sourceStereo] }
         if isVideo { return [.twoDimensional, .generatedStereo] }
@@ -227,7 +353,9 @@ final class MediaSession: InputTarget {
         photoLibraryAuthorizationStatus = currentStatus
         switch currentStatus {
         case .authorized, .limited:
-            loadPhotoLibrary()
+            if !hasLoadedPhotoLibrary {
+                loadPhotoLibrary()
+            }
         case .notDetermined:
             isLoadingPhotoLibrary = true
             Task { [weak self] in
@@ -258,6 +386,7 @@ final class MediaSession: InputTarget {
 
     func showPhotoLibrary() {
         resetGeneratedStereo()
+        cancelPendingMediaRequest()
         player?.pause()
         player = nil
         stereoFrameSource = nil
@@ -266,6 +395,11 @@ final class MediaSession: InputTarget {
         fileName = nil
         presentationMode = .twoDimensional
         isPlaying = false
+        videoDuration = 0
+        isSourceSpatialVideo = false
+        videoFrameRotation = .none
+        selectedPhotoLibraryAssetID = nil
+        pendingPhotoLibraryAssetID = nil
         lastErrorMessage = nil
         playbackStateDidChange()
         requestPhotoLibraryAccess()
@@ -275,6 +409,15 @@ final class MediaSession: InputTarget {
         photoLibraryColumns = max(1, columns)
         photoLibraryVisibleRows = max(1, visibleRows)
         photoLibraryFirstVisibleIndex = clampedPhotoLibraryStart(photoLibraryFirstVisibleIndex)
+        trimThumbnailCacheToVisibleAssets()
+    }
+
+    func scrollPhotoLibrary(byRows rowCount: Int) {
+        guard !photoLibraryAssets.isEmpty, rowCount != 0 else { return }
+        photoLibraryFirstVisibleIndex = clampedPhotoLibraryStart(
+            photoLibraryFirstVisibleIndex + rowCount * photoLibraryColumns
+        )
+        trimThumbnailCacheToVisibleAssets()
     }
 
     func requestThumbnail(for asset: PHAsset, targetSize: CGSize) {
@@ -286,26 +429,83 @@ final class MediaSession: InputTarget {
         options.deliveryMode = .opportunistic
         options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
-        photoImageManager.requestImage(
+        let requestID = photoImageManager.requestImage(
             for: asset,
             targetSize: targetSize,
             contentMode: .aspectFill,
             options: options
         ) { [weak self] image, info in
-            guard let image else { return }
             let isCancelled = (info?[PHImageCancelledKey] as? Bool) == true
-            guard !isCancelled else { return }
+            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) == true
+            let imageBox = image.map(SendableImage.init)
             Task { @MainActor [weak self] in
-                self?.photoLibraryThumbnails[identifier] = image
+                guard let self else { return }
+                if isCancelled || !isDegraded {
+                    requestedThumbnailIDs.remove(identifier)
+                    thumbnailRequestIDs.removeValue(forKey: identifier)
+                }
+                guard !isCancelled,
+                      visibleThumbnailAssetIDs.contains(identifier),
+                      let image = imageBox?.value else { return }
+                photoLibraryThumbnails[identifier] = image
             }
         }
+        thumbnailRequestIDs[identifier] = requestID
     }
 
     func thumbnail(for asset: PHAsset) -> UIImage? {
         photoLibraryThumbnails[asset.localIdentifier]
     }
 
+    private var visibleThumbnailAssetIDs: Set<String> {
+        let visibleCount = photoLibraryColumns * photoLibraryVisibleRows
+        return Set(
+            photoLibraryAssets
+                .dropFirst(photoLibraryFirstVisibleIndex)
+                .prefix(visibleCount)
+                .map(\.localIdentifier)
+        )
+    }
+
+    private func trimThumbnailCacheToVisibleAssets() {
+        let retainedIDs = visibleThumbnailAssetIDs
+        let obsoleteRequests = thumbnailRequestIDs.filter {
+            !retainedIDs.contains($0.key)
+        }
+        for (identifier, requestID) in obsoleteRequests {
+            photoImageManager.cancelImageRequest(requestID)
+            thumbnailRequestIDs.removeValue(forKey: identifier)
+            requestedThumbnailIDs.remove(identifier)
+        }
+        let retainedThumbnails = photoLibraryThumbnails.filter {
+            retainedIDs.contains($0.key)
+        }
+        if retainedThumbnails.count != photoLibraryThumbnails.count {
+            photoLibraryThumbnails = retainedThumbnails
+        }
+    }
+
+    private func clearThumbnailCache() {
+        for requestID in thumbnailRequestIDs.values {
+            photoImageManager.cancelImageRequest(requestID)
+        }
+        thumbnailRequestIDs = [:]
+        requestedThumbnailIDs = []
+        photoLibraryThumbnails = [:]
+    }
+
+    private func cancelPendingMediaRequest() {
+        photoLibraryLoadGeneration &+= 1
+        if let mediaRequestID {
+            photoImageManager.cancelImageRequest(mediaRequestID)
+            self.mediaRequestID = nil
+        }
+        pendingPhotoLibraryAssetID = nil
+        isLoadingPhotoLibrary = false
+    }
+
     func importFile(_ sourceURL: URL) throws {
+        selectedPhotoLibraryAssetID = nil
         let accessing = sourceURL.startAccessingSecurityScopedResource()
         defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
 
@@ -322,8 +522,15 @@ final class MediaSession: InputTarget {
     }
 
     func loadPhotoData(_ data: Data, suggestedName: String = "Photo") throws {
-        resetGeneratedStereo()
         let decoded = try SpatialPhotoDecoder.decode(data)
+        applyDecodedPhoto(decoded, suggestedName: suggestedName)
+    }
+
+    private func applyDecodedPhoto(
+        _ decoded: SpatialPhotoDecoder.DecodedPhoto,
+        suggestedName: String
+    ) {
+        resetGeneratedStereo()
         player?.pause()
         player = nil
         stereoFrameSource = nil
@@ -332,11 +539,32 @@ final class MediaSession: InputTarget {
         presentationMode = decoded.stereoPair == nil ? .twoDimensional : .sourceStereo
         fileName = decoded.stereoPair == nil ? suggestedName : "Spatial Photo"
         isPlaying = false
+        videoDuration = 0
+        isSourceSpatialVideo = false
+        videoFrameRotation = .none
+        lastErrorMessage = nil
+        playbackStateDidChange()
+    }
+
+    private func applyPhotoImage(_ loadedImage: UIImage, suggestedName: String) {
+        resetGeneratedStereo()
+        player?.pause()
+        player = nil
+        stereoFrameSource = nil
+        image = loadedImage
+        spatialPhoto = nil
+        presentationMode = .twoDimensional
+        fileName = suggestedName
+        isPlaying = false
+        videoDuration = 0
+        isSourceSpatialVideo = false
+        videoFrameRotation = .none
         lastErrorMessage = nil
         playbackStateDidChange()
     }
 
     func importMediaData(_ data: Data, filenameExtension: String) throws {
+        selectedPhotoLibraryAssetID = nil
         let imports = try FileManager.default.url(
             for: .documentDirectory,
             in: .userDomainMask,
@@ -388,6 +616,24 @@ final class MediaSession: InputTarget {
         }
         isPlaying.toggle()
         playbackStateDidChange()
+    }
+
+    func toggleSpatialVideo() {
+        setPresentationMode(
+            presentationMode == .generatedStereo ? .twoDimensional : .generatedStereo
+        )
+    }
+
+    func showPreviousMedia() {
+        showAdjacentMedia(offset: -1)
+    }
+
+    func showNextMedia() {
+        showAdjacentMedia(offset: 1)
+    }
+
+    func requestFileImport() {
+        fileImportRequest = UUID()
     }
 
     func seek(seconds: Double) {
@@ -497,13 +743,13 @@ final class MediaSession: InputTarget {
 
     func handle(_ command: InputCommand) {
         switch command {
-        case .pointerDown(let position) where isShowingPhotoLibrary:
-            pressedPhotoAssetID = photoLibraryAsset(at: position)?.localIdentifier
-        case .pointerUp(let position) where isShowingPhotoLibrary:
-            let asset = photoLibraryAsset(at: position)
-            defer { pressedPhotoAssetID = nil }
-            guard asset?.localIdentifier == pressedPhotoAssetID, let asset else { return }
-            loadPhotoLibraryAsset(asset)
+        case .pointerDown(let position):
+            pressedTarget = hitTarget(at: position)
+        case .pointerUp(let position):
+            let releasedTarget = hitTarget(at: position)
+            defer { pressedTarget = nil }
+            guard releasedTarget == pressedTarget, let releasedTarget else { return }
+            perform(releasedTarget)
         case .scroll(let delta) where isShowingPhotoLibrary:
             scrollPhotoLibrary(by: delta.dy)
         case .back where !isShowingPhotoLibrary:
@@ -546,33 +792,36 @@ final class MediaSession: InputTarget {
             assets.append(asset)
         }
         allPhotoLibraryAssets = assets
-        requestedThumbnailIDs = []
-        photoLibraryThumbnails = [:]
+        hasLoadedPhotoLibrary = true
+        clearThumbnailCache()
         applyPhotoLibraryFilter()
         isLoadingPhotoLibrary = false
     }
 
     private func applyPhotoLibraryFilter() {
         photoLibraryAssets = allPhotoLibraryAssets.filter {
-            photoLibraryFilter.includes($0.mediaType)
+            photoLibraryFilter.includes($0)
         }
         photoLibraryFirstVisibleIndex = 0
-        pressedPhotoAssetID = nil
+        pressedTarget = nil
+        trimThumbnailCacheToVisibleAssets()
     }
 
     private func photoLibraryAsset(at position: CGPoint) -> PHAsset? {
         guard !photoLibraryAssets.isEmpty else { return nil }
-        let column = min(photoLibraryColumns - 1, max(0, Int(position.x * CGFloat(photoLibraryColumns))))
-        let row = min(photoLibraryVisibleRows - 1, max(0, Int(position.y * CGFloat(photoLibraryVisibleRows))))
-        let index = photoLibraryFirstVisibleIndex + row * photoLibraryColumns + column
+        guard let index = MediaSurfaceInteractionLayout.photoLibraryIndex(
+            at: position,
+            columns: photoLibraryColumns,
+            rows: photoLibraryVisibleRows,
+            firstVisibleIndex: photoLibraryFirstVisibleIndex
+        ) else { return nil }
         guard photoLibraryAssets.indices.contains(index) else { return nil }
         return photoLibraryAssets[index]
     }
 
     private func scrollPhotoLibrary(by delta: CGFloat) {
-        guard !photoLibraryAssets.isEmpty, delta != 0 else { return }
-        let rowDelta = delta > 0 ? photoLibraryColumns : -photoLibraryColumns
-        photoLibraryFirstVisibleIndex = clampedPhotoLibraryStart(photoLibraryFirstVisibleIndex + rowDelta)
+        guard delta != 0 else { return }
+        scrollPhotoLibrary(byRows: delta > 0 ? 1 : -1)
     }
 
     private func clampedPhotoLibraryStart(_ value: Int) -> Int {
@@ -582,66 +831,207 @@ final class MediaSession: InputTarget {
         return min(rowAlignedValue, maximumStart)
     }
 
+    func openPhotoLibraryAsset(withIdentifier identifier: String) {
+        guard let asset = photoLibraryAssets.first(where: {
+            $0.localIdentifier == identifier
+        }) else { return }
+        loadPhotoLibraryAsset(asset)
+    }
+
     private func loadPhotoLibraryAsset(_ asset: PHAsset) {
+        cancelPendingMediaRequest()
+        photoLibraryLoadGeneration &+= 1
+        let loadGeneration = photoLibraryLoadGeneration
+        let identifier = asset.localIdentifier
+        pendingPhotoLibraryAssetID = identifier
         isLoadingPhotoLibrary = true
         lastErrorMessage = nil
         if asset.mediaType == .video {
+            let duration = asset.duration
+            let isSpatial = asset.mediaSubtypes.contains(.spatialMedia)
             let options = PHVideoRequestOptions()
             options.deliveryMode = .automatic
             options.isNetworkAccessAllowed = true
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) {
-                [weak self] avAsset, _, info in
+            let resultHandler: @Sendable (AVPlayerItem?, [AnyHashable: Any]?) -> Void = {
+                [weak self] playerItem, info in
+                let itemBox = playerItem.map(SendableAVPlayerItem.init)
+                let errorDescription = (info?[PHImageErrorKey] as? any Error)?.localizedDescription
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    guard loadGeneration == photoLibraryLoadGeneration else { return }
+                    mediaRequestID = nil
+                    pendingPhotoLibraryAssetID = nil
                     isLoadingPhotoLibrary = false
-                    if let avAsset {
-                        loadVideoAsset(avAsset, suggestedName: "Video")
+                    if let playerItem = itemBox?.value {
+                        loadVideoPlayerItem(
+                            playerItem,
+                            suggestedName: "Video",
+                            knownDuration: duration,
+                            isSpatial: isSpatial
+                        )
+                        selectedPhotoLibraryAssetID = identifier
                     } else {
-                        reportPhotoLibraryLoadFailure(info)
+                        reportPhotoLibraryLoadFailure(errorDescription: errorDescription)
                     }
                 }
             }
+            mediaRequestID = photoImageManager.requestPlayerItem(
+                forVideo: asset,
+                options: options,
+                resultHandler: resultHandler
+            )
+        } else if asset.mediaSubtypes.contains(.spatialMedia) {
+            requestSpatialPhoto(
+                asset,
+                identifier: identifier,
+                loadGeneration: loadGeneration
+            )
         } else {
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.version = .current
-            options.isNetworkAccessAllowed = true
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
-                [weak self] data, _, _, info in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    isLoadingPhotoLibrary = false
-                    guard let data else {
-                        reportPhotoLibraryLoadFailure(info)
-                        return
-                    }
-                    do {
-                        try loadPhotoData(data)
-                    } catch {
-                        reportImportError(error)
-                    }
-                }
-            }
+            requestDisplayPhoto(
+                asset,
+                identifier: identifier,
+                loadGeneration: loadGeneration
+            )
         }
     }
 
-    private func loadVideoAsset(_ asset: AVAsset, suggestedName: String) {
+    private func requestDisplayPhoto(
+        _ asset: PHAsset,
+        identifier: String,
+        loadGeneration: UInt64
+    ) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        options.version = .current
+        options.isNetworkAccessAllowed = true
+        let resultHandler: @Sendable (UIImage?, [AnyHashable: Any]?) -> Void = {
+            [weak self] loadedImage, info in
+            let imageBox = loadedImage.map(SendableImage.init)
+            let errorDescription = (info?[PHImageErrorKey] as? any Error)?.localizedDescription
+            let isCancelled = (info?[PHImageCancelledKey] as? Bool) == true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard loadGeneration == photoLibraryLoadGeneration else { return }
+                mediaRequestID = nil
+                pendingPhotoLibraryAssetID = nil
+                isLoadingPhotoLibrary = false
+                guard !isCancelled, let image = imageBox?.value else {
+                    reportPhotoLibraryLoadFailure(errorDescription: errorDescription)
+                    return
+                }
+                applyPhotoImage(image, suggestedName: "Photo")
+                selectedPhotoLibraryAssetID = identifier
+            }
+        }
+        mediaRequestID = photoImageManager.requestImage(
+            for: asset,
+            targetSize: CGSize(width: 2_048, height: 2_048),
+            contentMode: .aspectFit,
+            options: options,
+            resultHandler: resultHandler
+        )
+    }
+
+    private func requestSpatialPhoto(
+        _ asset: PHAsset,
+        identifier: String,
+        loadGeneration: UInt64
+    ) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.version = .current
+        options.isNetworkAccessAllowed = true
+        let resultHandler: @Sendable (Data?, String?, CGImagePropertyOrientation, [AnyHashable: Any]?) -> Void = {
+            [weak self] data, _, _, info in
+            let errorDescription = (info?[PHImageErrorKey] as? any Error)?.localizedDescription
+            guard let data else {
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          loadGeneration == photoLibraryLoadGeneration else { return }
+                    mediaRequestID = nil
+                    pendingPhotoLibraryAssetID = nil
+                    isLoadingPhotoLibrary = false
+                    reportPhotoLibraryLoadFailure(errorDescription: errorDescription)
+                }
+                return
+            }
+            Task.detached(priority: .userInitiated) { [weak self] in
+                do {
+                    let decoded = try SpatialPhotoDecoder.decode(data)
+                    await self?.finishSpatialPhotoLoad(
+                        decoded,
+                        identifier: identifier,
+                        loadGeneration: loadGeneration
+                    )
+                } catch {
+                    await self?.finishPhotoLoadFailure(
+                        error.localizedDescription,
+                        loadGeneration: loadGeneration
+                    )
+                }
+            }
+        }
+        mediaRequestID = photoImageManager.requestImageDataAndOrientation(
+            for: asset,
+            options: options,
+            resultHandler: resultHandler
+        )
+    }
+
+    private func finishSpatialPhotoLoad(
+        _ decoded: SpatialPhotoDecoder.DecodedPhoto,
+        identifier: String,
+        loadGeneration: UInt64
+    ) {
+        guard loadGeneration == photoLibraryLoadGeneration else { return }
+        mediaRequestID = nil
+        pendingPhotoLibraryAssetID = nil
+        isLoadingPhotoLibrary = false
+        applyDecodedPhoto(decoded, suggestedName: "Spatial Photo")
+        selectedPhotoLibraryAssetID = identifier
+    }
+
+    private func finishPhotoLoadFailure(
+        _ errorDescription: String,
+        loadGeneration: UInt64
+    ) {
+        guard loadGeneration == photoLibraryLoadGeneration else { return }
+        mediaRequestID = nil
+        pendingPhotoLibraryAssetID = nil
+        isLoadingPhotoLibrary = false
+        lastErrorMessage = errorDescription
+    }
+
+    private func loadVideoPlayerItem(
+        _ item: AVPlayerItem,
+        suggestedName: String,
+        knownDuration: TimeInterval? = nil,
+        isSpatial: Bool = false
+    ) {
         resetGeneratedStereo()
         image = nil
         spatialPhoto = nil
         presentationMode = .twoDimensional
         fileName = suggestedName
-        let item = AVPlayerItem(asset: asset)
         stereoFrameSource = AVPlayerStereoFrameSource(item: item)
         player = AVPlayer(playerItem: item)
+        videoFrameRotation = .none
         lastErrorMessage = nil
-        isPlaying = false
+        player?.play()
+        isPlaying = true
+        videoDuration = knownDuration ?? 0
+        isSourceSpatialVideo = isSpatial
         playbackStateDidChange()
+        loadVideoFrameRotation(from: item.asset)
+        if knownDuration == nil {
+            loadVideoDuration(from: item.asset)
+        }
     }
 
-    private func reportPhotoLibraryLoadFailure(_ info: [AnyHashable: Any]?) {
-        if let error = info?[PHImageErrorKey] as? any Error {
-            reportImportError(error)
+    private func reportPhotoLibraryLoadFailure(errorDescription: String?) {
+        if let errorDescription {
+            lastErrorMessage = errorDescription
         } else {
             reportImportError(MediaImportError.unavailablePhotoData)
         }
@@ -658,12 +1048,84 @@ final class MediaSession: InputTarget {
         image = nil
         spatialPhoto = nil
         presentationMode = .twoDimensional
-        let item = AVPlayerItem(asset: AVURLAsset(url: url))
-        stereoFrameSource = AVPlayerStereoFrameSource(item: item)
-        player = AVPlayer(playerItem: item)
-        lastErrorMessage = nil
+        loadVideoPlayerItem(
+            AVPlayerItem(asset: AVURLAsset(url: url)),
+            suggestedName: url.lastPathComponent
+        )
+    }
+
+    private var selectedPhotoLibraryIndex: Int? {
+        guard let selectedPhotoLibraryAssetID else { return nil }
+        return photoLibraryAssets.firstIndex {
+            $0.localIdentifier == selectedPhotoLibraryAssetID
+        }
+    }
+
+    private func showAdjacentMedia(offset: Int) {
+        guard let selectedPhotoLibraryIndex else { return }
+        let newIndex = selectedPhotoLibraryIndex + offset
+        guard photoLibraryAssets.indices.contains(newIndex) else { return }
+        player?.pause()
         isPlaying = false
-        playbackStateDidChange()
+        loadPhotoLibraryAsset(photoLibraryAssets[newIndex])
+    }
+
+    private func hitTarget(at position: CGPoint) -> MediaSurfaceHitTarget? {
+        if isShowingPhotoLibrary {
+            if let sidebarTarget = MediaSurfaceInteractionLayout.sidebarTarget(at: position) {
+                return sidebarTarget
+            }
+            return photoLibraryAsset(at: position).map {
+                .asset($0.localIdentifier)
+            }
+        }
+        if isVideo {
+            return MediaSurfaceInteractionLayout.videoViewerTarget(at: position)
+        }
+        return MediaSurfaceInteractionLayout.photoViewerTarget(at: position)
+    }
+
+    private func perform(_ target: MediaSurfaceHitTarget) {
+        switch target {
+        case .filter(let filter):
+            setPhotoLibraryFilter(filter)
+        case .files:
+            requestFileImport()
+        case .asset(let identifier):
+            openPhotoLibraryAsset(withIdentifier: identifier)
+        case .previous:
+            showPreviousMedia()
+        case .next:
+            showNextMedia()
+        case .close:
+            showPhotoLibrary()
+        case .togglePlayback:
+            togglePlayback()
+        case .toggleSpatialVideo:
+            toggleSpatialVideo()
+        }
+    }
+
+    private func loadVideoDuration(from asset: AVAsset) {
+        let generation = mediaGeneration
+        Task { [weak self] in
+            let duration = try? await asset.load(.duration)
+            guard let self,
+                  generation == mediaGeneration,
+                  let seconds = duration?.seconds,
+                  seconds.isFinite else { return }
+            videoDuration = max(0, seconds)
+        }
+    }
+
+    private func loadVideoFrameRotation(from asset: AVAsset) {
+        Task { [weak self] in
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+                  let transform = try? await track.load(.preferredTransform),
+                  let self,
+                  player?.currentItem?.asset === asset else { return }
+            videoFrameRotation = VideoFrameRotation(preferredTransform: transform)
+        }
     }
 
     private func finishDepthEstimation(_ frame: StereoDepthFrame, generation: UInt64) {
@@ -735,7 +1197,7 @@ struct MediaSurfaceView: View {
     let session: MediaSession
 
     var body: some View {
-        Group {
+        ZStack {
             if let image = session.image {
                 if session.presentationMode == .sourceStereo, let pair = session.spatialPhoto {
                     SpatialPhotoSideBySideView(pair: pair)
@@ -753,10 +1215,31 @@ struct MediaSurfaceView: View {
                             .foregroundStyle(.white)
                     }
                 } else {
-                    VideoPlayer(player: player)
+                    SDRVideoRendererView(
+                        player: player,
+                        rotation: session.videoFrameRotation
+                    )
                 }
             } else {
-                PhotoLibraryGridView(session: session)
+                GalleryLibraryView(session: session)
+            }
+
+            if !session.isShowingPhotoLibrary {
+                MediaViewerControlsOverlay(session: session)
+                    .zIndex(1)
+            }
+
+            if let message = session.lastErrorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.red.opacity(0.88), in: Capsule())
+                    .padding(16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .allowsHitTesting(false)
+                    .zIndex(2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -767,8 +1250,244 @@ struct MediaSurfaceView: View {
     }
 }
 
+private struct GalleryLibraryView: View {
+    let session: MediaSession
+
+    var body: some View {
+        GeometryReader { proxy in
+            let proposedSidebarWidth = proxy.size.width * MediaSurfaceInteractionLayout.sidebarWidth
+            let usesCompactSidebar = proposedSidebarWidth < 150
+            let sidebarWidth = usesCompactSidebar ? min(72, proxy.size.width * 0.24) : proposedSidebarWidth
+
+            HStack(spacing: 0) {
+                MediaLibrarySidebar(
+                    session: session,
+                    isCompact: usesCompactSidebar
+                )
+                .frame(width: sidebarWidth)
+
+                PhotoLibraryGridView(session: session)
+            }
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(.white.opacity(0.16))
+                    .frame(width: 1)
+                    .offset(x: sidebarWidth)
+                    .allowsHitTesting(false)
+            }
+        }
+        .background(Color.black)
+    }
+}
+
+private struct MediaLibrarySidebar: View {
+    let session: MediaSession
+    let isCompact: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                Group {
+                    if isCompact {
+                        Image(systemName: "photo.stack")
+                            .font(.title3.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .accessibilityHidden(true)
+                    } else {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label("Gallery", systemImage: "photo.stack")
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text("Filter media")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(.horizontal, isCompact ? 0 : 16)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: isCompact
+                        ? 64
+                        : proxy.size.height * MediaSurfaceInteractionLayout.sidebarHeaderHeight,
+                    alignment: isCompact ? .center : .leading
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Gallery filters")
+
+                ForEach(MediaLibraryFilter.allCases) { filter in
+                    sidebarButton(
+                        title: filter.title,
+                        systemImage: filter.systemImage,
+                        isSelected: session.photoLibraryFilter == filter
+                    ) {
+                        session.setPhotoLibraryFilter(filter)
+                    }
+                    .frame(
+                        height: isCompact
+                            ? 58
+                            : proxy.size.height * MediaSurfaceInteractionLayout.sidebarRowHeight
+                    )
+                }
+
+                sidebarButton(title: "Files", systemImage: "folder", isSelected: false) {
+                    session.requestFileImport()
+                }
+                .frame(
+                    height: isCompact
+                        ? 58
+                        : proxy.size.height * MediaSurfaceInteractionLayout.sidebarRowHeight
+                )
+
+                Spacer(minLength: 0)
+            }
+        }
+        .foregroundStyle(.white)
+        .background {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.09, green: 0.10, blue: 0.12),
+                    Color(red: 0.055, green: 0.06, blue: 0.075),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    private func sidebarButton(
+        title: String,
+        systemImage: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if isCompact {
+                    Image(systemName: systemImage)
+                        .font(.title3.weight(isSelected ? .semibold : .regular))
+                } else {
+                    Label(title, systemImage: systemImage)
+                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+                .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.7))
+                .padding(.horizontal, isCompact ? 0 : 16)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: isCompact ? .center : .leading
+                )
+                .background(isSelected ? Color.cyan.opacity(0.18) : Color.clear)
+                .overlay(alignment: .leading) {
+                    if isSelected {
+                        Capsule()
+                            .fill(.cyan)
+                            .frame(width: 3)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct MediaViewerControlsOverlay: View {
+    let session: MediaSession
+
+    var body: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Group {
+                    if session.isVideo {
+                        videoControls
+                    } else {
+                        photoControls
+                    }
+                }
+                .frame(height: proxy.size.height * (1 - MediaSurfaceInteractionLayout.viewerControlsTop))
+                .background(.black.opacity(0.72))
+                .overlay(alignment: .top) {
+                    Divider().overlay(.white.opacity(0.18))
+                }
+            }
+        }
+        .foregroundStyle(.white)
+    }
+
+    private var photoControls: some View {
+        HStack(spacing: 0) {
+            viewerButton("Previous", systemImage: "chevron.left") {
+                session.showPreviousMedia()
+            }
+            .disabled(!session.canShowPreviousMedia)
+
+            viewerButton("Next", systemImage: "chevron.right") {
+                session.showNextMedia()
+            }
+            .disabled(!session.canShowNextMedia)
+
+            viewerButton("Close", systemImage: "xmark") {
+                session.showPhotoLibrary()
+            }
+        }
+    }
+
+    private var videoControls: some View {
+        HStack(spacing: 0) {
+            viewerButton(
+                session.isPlaying ? "Pause" : "Play",
+                systemImage: session.isPlaying ? "pause.fill" : "play.fill"
+            ) {
+                session.togglePlayback()
+            }
+
+            Label(session.formattedVideoDuration, systemImage: "clock")
+                .font(.subheadline.monospacedDigit().weight(.medium))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Video duration")
+
+            viewerButton(
+                "Spatial Video",
+                systemImage: session.presentationMode == .generatedStereo
+                    ? "view.3d"
+                    : "rectangle.on.rectangle"
+            ) {
+                session.toggleSpatialVideo()
+            }
+            .foregroundStyle(session.presentationMode == .generatedStereo ? .cyan : .white)
+
+            viewerButton("Close", systemImage: "xmark") {
+                session.showPhotoLibrary()
+            }
+        }
+    }
+
+    private func viewerButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct PhotoLibraryGridView: View {
     let session: MediaSession
+    @State private var consumedDragRows = 0
 
     var body: some View {
         switch session.photoLibraryAuthorizationStatus {
@@ -812,22 +1531,49 @@ private struct PhotoLibraryGridView: View {
                     .prefix(layout.capacity)
             )
 
-            LazyVGrid(columns: layout.columns, spacing: layout.spacing) {
-                ForEach(visibleAssets, id: \.localIdentifier) { asset in
-                    PhotoLibraryThumbnailView(
-                        asset: asset,
-                        image: session.thumbnail(for: asset)
-                    )
-                    .aspectRatio(1, contentMode: .fit)
-                    .task(id: asset.localIdentifier) {
-                        session.requestThumbnail(
-                            for: asset,
-                            targetSize: layout.thumbnailTargetSize
-                        )
+            VStack(spacing: 0) {
+                ForEach(0 ..< layout.rowCount, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(0 ..< layout.columnCount, id: \.self) { column in
+                            let index = row * layout.columnCount + column
+                            Group {
+                                if visibleAssets.indices.contains(index) {
+                                    let asset = visibleAssets[index]
+                                    Button {
+                                        session.openPhotoLibraryAsset(
+                                            withIdentifier: asset.localIdentifier
+                                        )
+                                    } label: {
+                                        PhotoLibraryThumbnailView(
+                                            asset: asset,
+                                            image: session.thumbnail(for: asset)
+                                        )
+                                        .overlay {
+                                            if session.pendingPhotoLibraryAssetID == asset.localIdentifier {
+                                                Color.black.opacity(0.42)
+                                                ProgressView()
+                                                    .tint(.white)
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .task(id: asset.localIdentifier) {
+                                        session.requestThumbnail(
+                                            for: asset,
+                                            targetSize: layout.thumbnailTargetSize
+                                        )
+                                    }
+                                } else {
+                                    Color.clear
+                                }
+                            }
+                            .padding(layout.spacing / 2)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                     }
+                    .frame(maxHeight: .infinity)
                 }
             }
-            .padding(layout.spacing)
             .overlay(alignment: .topTrailing) {
                 Text("\(session.photoLibraryAssets.count) items")
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -836,6 +1582,7 @@ private struct PhotoLibraryGridView: View {
                     .padding(.vertical, 6)
                     .background(.black.opacity(0.72), in: Capsule())
                     .padding(12)
+                    .allowsHitTesting(false)
             }
             .onAppear {
                 session.updatePhotoLibraryGrid(
@@ -850,8 +1597,28 @@ private struct PhotoLibraryGridView: View {
                     visibleRows: newLayout.rowCount
                 )
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { value in
+                        let requestedRows = dragRows(for: value.translation.height)
+                        let rowDelta = requestedRows - consumedDragRows
+                        guard rowDelta != 0 else { return }
+                        session.scrollPhotoLibrary(byRows: rowDelta)
+                        consumedDragRows = requestedRows
+                    }
+                    .onEnded { value in
+                        let predictedRows = dragRows(for: value.predictedEndTranslation.height)
+                        let extraRows = max(-3, min(3, predictedRows - consumedDragRows))
+                        session.scrollPhotoLibrary(byRows: extraRows)
+                        consumedDragRows = 0
+                    }
+            )
         }
         .clipped()
+    }
+
+    private func dragRows(for verticalTranslation: CGFloat) -> Int {
+        Int((-verticalTranslation / 72).rounded(.towardZero))
     }
 }
 
@@ -861,6 +1628,7 @@ private extension MediaLibraryFilter {
         case .all: "No photos or videos"
         case .photos: "No photos"
         case .videos: "No videos"
+        case .spatial: "No spatial media"
         }
     }
 
@@ -869,6 +1637,7 @@ private extension MediaLibraryFilter {
         case .all: "Your photo library is empty."
         case .photos: "There are no photos matching this filter."
         case .videos: "There are no videos matching this filter."
+        case .spatial: "There are no spatial photos or videos in your library."
         }
     }
 }
@@ -881,10 +1650,6 @@ private struct PhotoLibraryGridLayout {
     init(size: CGSize) {
         columnCount = max(3, Int(size.width / 150))
         rowCount = max(2, Int(size.height / 150))
-    }
-
-    var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: spacing), count: columnCount)
     }
 
     var capacity: Int { columnCount * rowCount }
@@ -922,6 +1687,16 @@ private struct PhotoLibraryThumbnailView: View {
                 .padding(5)
                 .background(.black.opacity(0.7), in: Capsule())
                 .padding(6)
+            }
+
+            if asset.mediaSubtypes.contains(.spatialMedia) {
+                Label("Spatial", systemImage: "view.3d")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(.cyan.opacity(0.78), in: Capsule())
+                    .padding(6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))

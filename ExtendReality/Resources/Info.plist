@@ -24,10 +24,20 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.vladprusakov.ExtendReality.maps</string>
+			<string>xr.sloppy.team.ExtendReality.maps</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>extendreality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>xr.sloppy.team.ExtendReality.google-oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(YOUTUBE_OAUTH_REVERSED_CLIENT_ID)</string>
 			</array>
 		</dict>
 	</array>
@@ -46,7 +56,7 @@
 		<string>_extend-reality._tcp.</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>ExtendReality uses the camera for debug-only spatial tracking and lets you grant selected web apps camera access.</string>
+	<string>ExtendReality uses the camera for private on-device hand controls and lets you grant selected web apps camera access.</string>
 	<key>NSFocusStatusUsageDescription</key>
 	<string>ExtendReality reads whether Focus is active so spatial apps can respect your availability.</string>
 	<key>NSHealthShareUsageDescription</key>
@@ -101,5 +111,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>YouTubeOAuthCallbackScheme</key>
+	<string>$(YOUTUBE_OAUTH_REVERSED_CLIENT_ID)</string>
+	<key>YouTubeOAuthClientID</key>
+	<string>$(YOUTUBE_OAUTH_CLIENT_ID)</string>
 </dict>
 </plist>

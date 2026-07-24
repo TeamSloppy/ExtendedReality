@@ -8,7 +8,7 @@ An iOS 18 spatial workspace for USB-C display glasses, initially targeting an iP
 - AirPods-based 3DoF head tracking through `CMHeadphoneMotionManager`, with recenter, smoothing, roll compensation, and automatic head-locked fallback.
 - Persisted multi-window workspace with focus, close, minimize, move, scale, and recenter controls.
 - iPhone controller with trackpad, cursor/arrange/scroll modes, keyboard, Home, Back, and media controls.
-- Apple Watch controller with gyroscope pointer input, Digital Crown scrolling, Double Tap click, recenter, app launching, and window focus/minimize/close actions.
+- Apple Watch controller with switchable wrist-pointer and touch-trackpad input, Digital Crown scrolling, tap/double-tap clicks, system Double Tap click, recenter, app launching, and window focus/minimize/close actions.
 - Live `WKWebView` browser surface with a JavaScript cursor bridge.
 - Curated PWA mini-app store with isolated per-app WebKit storage, window/widget launch modes, origin restrictions, age gating, camera/microphone consent, and uninstall cleanup.
 - Photos/Files image and video surface backed by AVFoundation, including spatial photos and on-device Depth Anything V2 + Metal Full SBS generation for local video.
@@ -28,7 +28,7 @@ xcodegen generate
 
 Open `ExtendReality.xcodeproj` and run on a physical USB-C iPhone. `project.yml` contains the current development team; replace `DEVELOPMENT_TEAM` there when building with another Apple Developer account. The RoyalVNCKit dependency is pinned to commit `337197afdb32020d3dfdb7d058989115b740cdc4` because its 1.1.0 tag currently contains a branch dependency that SwiftPM cannot resolve from a stable release.
 
-The companion watch app targets watchOS 11. Run the `ExtendReality` scheme on a paired iPhone/Apple Watch so Xcode installs both apps. Open ExtendReality on both devices, tap the gyroscope button to arm pointer motion, rotate the Digital Crown to scroll, and use the primary Double Tap gesture (Apple Watch Series 9/Ultra 2 or newer) to click.
+The companion watch app targets watchOS 11. Run the `ExtendReality` scheme on a paired iPhone/Apple Watch so Xcode installs both apps. Open ExtendReality on both devices, use the top-right control to switch between wrist-pointer and trackpad modes, rotate the Digital Crown to scroll, and use the primary Double Tap gesture (Apple Watch Series 9/Ultra 2 or newer) to click. In trackpad mode, drag to move the pointer, tap to click, or double tap to double-click.
 
 `project.yml` explicitly embeds and signs the dynamic `RoyalVNCKit.framework`. Keep `embed: true` and `codeSign: true` on that package dependency; otherwise a device build links successfully but terminates at launch with `Library not loaded: @rpath/RoyalVNCKit.framework/RoyalVNCKit`.
 
@@ -47,7 +47,7 @@ Three deployable apps live in [`pwa-apps`](pwa-apps): the offline Excalidraw-bas
 3. Disconnect and reconnect the cable; the external scene should recover and retain its layout.
 4. Connect motion-capable AirPods and grant Motion access. Use **Reset** to establish the current forward direction; disconnecting the AirPods automatically returns the canvas to head-locked mode.
 5. Direct DisplayPort does not expose a documented XREAL Air v1 IMU channel to iOS. `XREALPoseProvider` remains the boundary for a future supported USB/HID or BLE tracker.
-6. Open the Watch app while the iPhone app is active. Confirm wrist rotation moves the cursor, Digital Crown scrolls the focused surface, and Double Tap activates the click button. Tune pointer sensitivity in the Watch app if needed.
+6. Open the Watch app while the iPhone app is active. Confirm wrist movement follows the pointer direction, trackpad drags move the cursor, Digital Crown scrolls the focused surface, and both system Double Tap and trackpad taps activate clicks. Tune wrist-pointer sensitivity in the Watch app if needed.
 7. Open a local video in Gallery, choose **AI 3D**, and switch the glasses to Full SBS (3840×1080) within eight seconds. Confirm the two eye views stay synchronized with audio, seeking resets depth history, and critical thermal state returns playback to 2D.
 
 ## Spatial debug website
@@ -60,7 +60,9 @@ Xcode connection instructions.
 
 ## YouTube setup
 
-Create a Google Cloud project, enable YouTube Data API v3, and place the API key in the app's Settings sheet. Search requires the key; direct playback by URL/video ID does not. Google account OAuth needs a Google iOS OAuth client and URL configuration and is intentionally not shipped with placeholder credentials.
+Create a Google Cloud project, enable YouTube Data API v3, configure its OAuth consent screen, and create an **iOS OAuth client** for `xr.sloppy.team.ExtendReality`. Set `YOUTUBE_OAUTH_CLIENT_ID` and `YOUTUBE_OAUTH_REVERSED_CLIENT_ID` in `project.yml` to the client ID and the iOS URL scheme shown by Google, then run `xcodegen generate`.
+
+The app uses Google OAuth with the read-only YouTube scope; it does not use an API key or client secret. On first launch, YouTube asks the user to sign in and then shows subscriptions, liked videos, and the user's playlists. The OAuth session is restored and refreshed through the signed app's Keychain access.
 
 YouTube downloads and offline caching are not implemented. Offline playback accepts files selected from Photos or Files.
 

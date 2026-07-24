@@ -1,9 +1,17 @@
 import Foundation
 
+enum WatchWristLocation: String, Equatable, Sendable {
+    case left
+    case right
+}
+
 enum WatchControlCommand: Equatable, Sendable {
+    case pointerStarted(showsGuide: Bool, wristLocation: WatchWristLocation)
+    case pointerStopped
     case pointerDelta(x: Double, y: Double)
     case scroll(delta: Double)
     case click
+    case doubleClick
     case recenter
     case focusWindow(id: UUID)
     case openWindow(kind: String)
@@ -22,11 +30,20 @@ enum WatchControlCommand: Equatable, Sendable {
         static let delta = "delta"
         static let id = "id"
         static let kind = "kind"
+        static let showsGuide = "showsGuide"
+        static let wristLocation = "wristLocation"
     }
 
     init?(dictionary: [String: Any]) {
         guard let rawCommand = dictionary[Key.command] as? String else { return nil }
         switch rawCommand {
+        case "pointerStarted":
+            guard let showsGuide = dictionary[Key.showsGuide] as? Bool,
+                  let rawWristLocation = dictionary[Key.wristLocation] as? String,
+                  let wristLocation = WatchWristLocation(rawValue: rawWristLocation) else { return nil }
+            self = .pointerStarted(showsGuide: showsGuide, wristLocation: wristLocation)
+        case "pointerStopped":
+            self = .pointerStopped
         case "pointerDelta":
             guard let x = dictionary[Key.x] as? Double,
                   let y = dictionary[Key.y] as? Double else { return nil }
@@ -36,6 +53,8 @@ enum WatchControlCommand: Equatable, Sendable {
             self = .scroll(delta: delta)
         case "click":
             self = .click
+        case "doubleClick":
+            self = .doubleClick
         case "recenter":
             self = .recenter
         case "focusWindow", "minimizeWindow", "closeWindow":
@@ -67,12 +86,22 @@ enum WatchControlCommand: Equatable, Sendable {
 
     var dictionary: [String: Any] {
         switch self {
+        case .pointerStarted(let showsGuide, let wristLocation):
+            [
+                Key.command: "pointerStarted",
+                Key.showsGuide: showsGuide,
+                Key.wristLocation: wristLocation.rawValue
+            ]
+        case .pointerStopped:
+            [Key.command: "pointerStopped"]
         case .pointerDelta(let x, let y):
             [Key.command: "pointerDelta", Key.x: x, Key.y: y]
         case .scroll(let delta):
             [Key.command: "scroll", Key.delta: delta]
         case .click:
             [Key.command: "click"]
+        case .doubleClick:
+            [Key.command: "doubleClick"]
         case .recenter:
             [Key.command: "recenter"]
         case .focusWindow(let id):

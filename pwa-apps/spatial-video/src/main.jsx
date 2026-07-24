@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import {
   AlertCircle,
+  ArrowLeft,
   Check,
   ChevronRight,
   CircleOff,
@@ -13,6 +14,7 @@ import {
   FolderOpen,
   Gauge,
   HardDrive,
+  Home,
   Info,
   Library,
   ListPlus,
@@ -20,11 +22,13 @@ import {
   LogIn,
   LogOut,
   MonitorPlay,
+  MoreHorizontal,
   Pause,
   Play,
   PlaySquare,
   Plus,
   RefreshCw,
+  Radio,
   RotateCcw,
   RotateCw,
   Search,
@@ -56,7 +60,9 @@ import {
   youtubeFallbackItem,
 } from './youtube.js'
 import {
+  DEFAULT_GOOGLE_OAUTH_CLIENT_ID,
   isGoogleWebClientID,
+  normalizeGoogleClientID,
   requestYouTubeAccessToken,
   revokeYouTubeAccessToken,
 } from './youtube-auth.js'
@@ -310,7 +316,10 @@ function PlayerPanel({ state, controllerRef, onPlayback, onCommand, showChrome =
       {!current && <EmptyPlayer />}
       {showChrome && (
         <header className="player-chrome">
-          <div className="brand-lockup"><span className="app-mark"><Play aria-hidden="true" /></span><strong>Spatial Video</strong></div>
+          <div className="brand-lockup">
+            <button className="chrome-back-button" type="button" aria-label="Back to library" onClick={() => onCommand({ type: 'browse-library' })}><ArrowLeft aria-hidden="true" /></button>
+            <span className="app-mark"><Play aria-hidden="true" /></span><strong>Spatial Video</strong>
+          </div>
           <div className="chrome-actions">
             <span className={state.online ? 'network-pill' : 'network-pill offline'}>
               {state.online ? <Wifi aria-hidden="true" /> : <CloudOff aria-hidden="true" />}
@@ -592,7 +601,7 @@ function SettingsModal({ initialKey, initialClientID, authSession, authBusy, aut
       {authError && <p className="modal-error" role="alert"><AlertCircle aria-hidden="true" />{authError}</p>}
       <div className="privacy-note"><Info aria-hidden="true" /><p>This is a latest-uploads feed from subscribed channels. The YouTube Data API does not expose the personalized Home recommendations feed.</p></div>
       <footer className="modal-actions">
-        <button type="button" className="secondary-button" onClick={() => { setKey(''); setClientID('') }}>Clear fields</button>
+        <button type="button" className="secondary-button" onClick={() => { setKey(''); setClientID(DEFAULT_GOOGLE_OAUTH_CLIENT_ID) }}>Reset fields</button>
         <button type="button" className="primary-button" disabled={!clientIDValid} onClick={() => onSave({ apiKey: key.trim(), clientID: clientID.trim() })}>Save settings</button>
       </footer>
     </ModalFrame>
@@ -651,7 +660,176 @@ function ImportModal({ onImported, onClose }) {
   )
 }
 
-function BrowserLayout({ state, controllerRef, onPlayback, onCommand, playerOnly = false }) {
+const sectionDetails = {
+  home: { title: 'Watch in a new dimension', description: 'Your videos, subscriptions, and offline library in one place.' },
+  discover: { title: 'Discover', description: 'Search YouTube or open a direct video link.' },
+  subscriptions: { title: 'Subscriptions', description: 'The latest uploads from channels you follow.' },
+  saved: { title: 'Saved', description: 'Videos waiting in your queue.' },
+  offline: { title: 'Offline', description: 'Original-quality files stored privately on this device.' },
+}
+
+function itemKey(item) {
+  return item.kind === 'offline' || item.id ? `offline-${item.id}` : `youtube-${item.videoId}`
+}
+
+function LibraryMediaCard({ item, queued, onPlay, onQueue }) {
+  const offlineItem = item.kind === 'offline' || Boolean(item.id)
+  const source = offlineItem ? 'Offline' : item.channelTitle || 'YouTube'
+  const meta = offlineItem
+    ? `${String(item.extension || 'video').toUpperCase()} · ${formatBytes(item.bytes || 0)}`
+    : item.publishedAt
+      ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(item.publishedAt))
+      : queued ? 'Saved to your queue' : 'YouTube video'
+
+  return (
+    <article className="library-media-card">
+      <button type="button" className="library-card-main" onClick={onPlay} aria-label={`Open ${item.title}`}>
+        <span className={item.thumbnailURL ? 'library-thumbnail' : 'library-thumbnail placeholder'}>
+          {item.thumbnailURL ? <img src={item.thumbnailURL} alt="" /> : <FileVideo aria-hidden="true" />}
+          <span className={offlineItem ? 'thumbnail-badge offline' : 'thumbnail-badge'}>{offlineItem ? <HardDrive aria-hidden="true" /> : <PlaySquare aria-hidden="true" />}{offlineItem ? 'Local' : 'Online'}</span>
+          <span className="thumbnail-play"><Play aria-hidden="true" /></span>
+        </span>
+        <span className="library-card-copy">
+          <span className={offlineItem ? 'channel-avatar offline' : 'channel-avatar'}>{offlineItem ? <HardDrive aria-hidden="true" /> : <Play aria-hidden="true" />}</span>
+          <span className="library-card-text"><strong>{item.title}</strong><small>{source}</small><small>{meta}</small></span>
+        </span>
+      </button>
+      {!offlineItem && onQueue && (
+        <button type="button" className="card-action" aria-label={queued ? `${item.title} is saved` : `Save ${item.title}`} disabled={queued} onClick={onQueue}>
+          {queued ? <Check aria-hidden="true" /> : <MoreHorizontal aria-hidden="true" />}
+        </button>
+      )}
+    </article>
+  )
+}
+
+function LibraryBrowser({ state, onCommand }) {
+  const [section, setSection] = useState('home')
+  const [query, setQuery] = useState(state.query)
+  const searchRef = useRef(null)
+  useEffect(() => { if (state.query) setQuery(state.query) }, [state.query])
+
+  const allItems = useMemo(() => {
+    const seen = new Set()
+    return [...(state.current ? [state.current] : []), ...state.results, ...state.subscriptions, ...state.queue, ...state.offline]
+      .map((item) => ({ ...item, kind: item.kind || (item.id ? 'offline' : 'youtube') }))
+      .filter((item) => {
+        const key = itemKey(item)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }, [state.current, state.results, state.subscriptions, state.queue, state.offline])
+
+  const items = section === 'home'
+    ? allItems
+    : section === 'discover'
+      ? state.results
+      : section === 'subscriptions'
+        ? state.subscriptions
+        : section === 'saved'
+          ? state.queue
+          : state.offline.map((item) => ({ ...item, kind: 'offline' }))
+  const details = sectionDetails[section]
+  const status = section === 'subscriptions' ? state.subscriptionStatus : section === 'discover' ? state.searchStatus : ''
+
+  const submit = (event) => {
+    event.preventDefault()
+    setSection('discover')
+    onCommand({ type: 'search', query })
+  }
+
+  const showSearch = () => {
+    setSection('discover')
+    window.requestAnimationFrame(() => searchRef.current?.focus())
+  }
+
+  const navItems = [
+    { id: 'home', label: 'Home', icon: Home },
+    { id: 'discover', label: 'Discover', icon: Search },
+    { id: 'subscriptions', label: 'Following', icon: Radio },
+    { id: 'saved', label: 'Saved', icon: Library },
+    { id: 'offline', label: 'Offline', icon: HardDrive },
+  ]
+
+  return (
+    <main className="library-shell">
+      <section className="library-window" aria-label="Spatial Video library">
+        <header className="library-topbar">
+          <div className="library-brand"><span className="brand-menu" aria-hidden="true"><span /><span /><span /></span><span className="app-mark"><Play aria-hidden="true" /></span><strong>Spatial <span>Video</span></strong></div>
+          <form className="library-search" onSubmit={submit}>
+            <label className="sr-only" htmlFor="library-search-input">Search YouTube or paste a video link</label>
+            <Search aria-hidden="true" />
+            <input ref={searchRef} id="library-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search or paste a YouTube link" autoComplete="off" />
+            {query && <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setQuery('')}><X aria-hidden="true" /></button>}
+            <button type="submit" className="library-search-submit" aria-label="Search"><ChevronRight aria-hidden="true" /></button>
+          </form>
+          <div className="library-actions">
+            <span className={state.online ? 'library-network' : 'library-network offline'} aria-label={state.online ? 'Online' : 'Offline'}>{state.online ? <Wifi aria-hidden="true" /> : <CloudOff aria-hidden="true" />}</span>
+            <button className="topbar-action" type="button" aria-label="Add offline video" onClick={() => onCommand({ type: 'open-import' })}><Plus aria-hidden="true" /></button>
+            <button className="topbar-action" type="button" aria-label="Open settings" onClick={() => onCommand({ type: 'open-settings' })}><Settings aria-hidden="true" /></button>
+          </div>
+        </header>
+
+        <aside className="library-rail" aria-label="Library sections">
+          <nav>
+            {navItems.map(({ id, label, icon: Icon }) => (
+              <button key={id} type="button" className={section === id ? 'active' : ''} aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}>
+                <Icon aria-hidden="true" /><span>{label}</span>
+                {id === 'saved' && state.queue.length > 0 && <small>{state.queue.length}</small>}
+              </button>
+            ))}
+          </nav>
+          <button className="rail-settings" type="button" onClick={() => onCommand({ type: 'open-settings' })}><Settings aria-hidden="true" /><span>Settings</span></button>
+        </aside>
+
+        <div className="library-content">
+          <div className="library-heading">
+            <div><span className="library-kicker"><span /> Spatial collection</span><h1>{details.title}</h1><p>{details.description}</p></div>
+            {section === 'subscriptions' && (
+              <button type="button" className="refresh-button" onClick={() => onCommand({ type: state.youtubeConnected ? 'refresh-subscriptions' : 'open-settings' })}>
+                {state.youtubeConnected ? <RefreshCw aria-hidden="true" /> : <LogIn aria-hidden="true" />}{state.youtubeConnected ? 'Refresh' : 'Connect'}
+              </button>
+            )}
+            {section === 'offline' && <button type="button" className="refresh-button" onClick={() => onCommand({ type: 'open-import' })}><Plus aria-hidden="true" />Add video</button>}
+          </div>
+
+          <div className="library-filters" aria-label="Content filters">
+            {navItems.slice(0, 5).map(({ id, label }) => <button key={id} type="button" className={section === id ? 'active' : ''} onClick={() => setSection(id)}>{label}</button>)}
+          </div>
+
+          {status && <p className={status.startsWith('Error:') ? 'library-status error' : 'library-status'} aria-live="polite">{status}</p>}
+
+          {items.length ? (
+            <div className="library-grid">
+              {items.map((item) => (
+                <LibraryMediaCard
+                  key={itemKey(item)}
+                  item={item}
+                  queued={item.kind !== 'offline' && state.queue.some((entry) => entry.videoId === item.videoId)}
+                  onPlay={() => onCommand({ type: item.kind === 'offline' || item.id ? 'load-offline' : 'load-youtube', item })}
+                  onQueue={item.kind === 'offline' || item.id ? null : () => onCommand({ type: 'enqueue', item })}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="library-empty">
+              <div className="empty-intro"><span><MonitorPlay aria-hidden="true" /></span><h2>Build your spatial library</h2><p>Find an online video, connect your subscriptions, or bring a file you already own.</p></div>
+              <div className="quick-actions">
+                <button type="button" onClick={showSearch}><Search aria-hidden="true" /><span><strong>Search videos</strong><small>Paste a link or find something new</small></span><ChevronRight aria-hidden="true" /></button>
+                <button type="button" onClick={() => onCommand({ type: 'open-settings' })}><Radio aria-hidden="true" /><span><strong>Connect subscriptions</strong><small>Read-only access to recent uploads</small></span><ChevronRight aria-hidden="true" /></button>
+                <button type="button" onClick={() => onCommand({ type: 'open-import' })}><Download aria-hidden="true" /><span><strong>Add offline</strong><small>Keep a private original-quality copy</small></span><ChevronRight aria-hidden="true" /></button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function BrowserLayout({ state, controllerRef, onPlayback, onCommand, playerOnly = false, screen = 'library' }) {
+  if (!playerOnly && screen === 'library') return <LibraryBrowser state={state} onCommand={onCommand} />
   return (
     <main className={playerOnly ? 'single-panel-shell' : 'app-shell'}>
       <PlayerPanel state={state} controllerRef={controllerRef} onPlayback={onPlayback} onCommand={onCommand} />
@@ -663,6 +841,7 @@ function BrowserLayout({ state, controllerRef, onPlayback, onCommand, playerOnly
 }
 
 function PrimaryApp() {
+  const [screen, setScreen] = useState('library')
   const [current, setCurrent] = useState(null)
   const [playback, setPlayback] = useState(emptyPlayback)
   const [results, setResults] = useState([])
@@ -674,7 +853,7 @@ function PrimaryApp() {
   const [subscriptionStatus, setSubscriptionStatus] = useState('')
   const [online, setOnline] = useState(navigator.onLine)
   const [apiKey, setAPIKey] = useState('')
-  const [googleClientID, setGoogleClientID] = useState('')
+  const [googleClientID, setGoogleClientID] = useState(DEFAULT_GOOGLE_OAUTH_CLIENT_ID)
   const [authSession, setAuthSession] = useState(null)
   const [authBusy, setAuthBusy] = useState(false)
   const [authError, setAuthError] = useState('')
@@ -706,13 +885,13 @@ function PrimaryApp() {
   useEffect(() => {
     Promise.all([
       getSetting('youtubeApiKey', ''),
-      getSetting('googleOAuthClientID', ''),
+      getSetting('googleOAuthClientID', DEFAULT_GOOGLE_OAUTH_CLIENT_ID),
       getSetting('queue', []),
       getSetting('current', null),
       cleanupOfflineStorage(),
     ]).then(([storedKey, storedClientID, storedQueue, storedCurrent, storedOffline]) => {
       setAPIKey(storedKey)
-      setGoogleClientID(storedClientID)
+      setGoogleClientID(normalizeGoogleClientID(storedClientID) || DEFAULT_GOOGLE_OAUTH_CLIENT_ID)
       setQueue(Array.isArray(storedQueue) ? storedQueue : [])
       if (storedCurrent?.kind === 'offline') {
         const existing = storedOffline.find((item) => item.id === storedCurrent.id)
@@ -782,6 +961,7 @@ function PrimaryApp() {
     setCurrent({ ...item, kind: 'youtube' })
     setPlayback(emptyPlayback)
     setSearchStatus('')
+    setScreen('watch')
   }, [])
 
   const handleSearch = useCallback(async (value) => {
@@ -851,7 +1031,13 @@ function PrimaryApp() {
     else if (command.type === 'refresh-subscriptions') refreshSubscriptions()
     else if (command.type === 'load-youtube') loadYouTube(command.item)
     else if (command.type === 'enqueue') setQueue((items) => items.some((item) => item.videoId === command.item.videoId) ? items : [...items, command.item])
-    else if (command.type === 'load-offline') { setCurrent({ ...command.item, kind: 'offline' }); setPlayback(emptyPlayback) }
+    else if (command.type === 'load-offline') { setCurrent({ ...command.item, kind: 'offline' }); setPlayback(emptyPlayback); setScreen('watch') }
+    else if (command.type === 'browse-library') {
+      playerController.current?.pause?.()
+      setPlayback(emptyPlayback)
+      setCurrent(null)
+      setScreen('library')
+    }
     else if (command.type === 'delete-offline') {
       deleteOfflineMedia(command.item).then(() => {
         setOffline((items) => items.filter((item) => item.id !== command.item.id))
@@ -909,6 +1095,7 @@ function PrimaryApp() {
     setOffline((items) => [record, ...items])
     setCurrent({ ...record, kind: 'offline' })
     setPlayback(emptyPlayback)
+    setScreen('watch')
   }
 
   if (!hydrated) return <main className="loading-screen"><LoaderCircle className="spin" aria-hidden="true" /><span>Opening Spatial Video…</span></main>
@@ -922,6 +1109,7 @@ function PrimaryApp() {
         onPlayback={setPlayback}
         onCommand={handleCommand}
         playerOnly={spatialActive}
+        screen={screen}
       />
       {modal === 'settings' && (
         <SettingsModal

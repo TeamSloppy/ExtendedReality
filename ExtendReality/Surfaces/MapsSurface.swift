@@ -117,7 +117,7 @@ enum MapsSessionError: LocalizedError {
 
 @MainActor
 @Observable
-final class MapsSession {
+final class MapsSession: InputTarget {
     var sourceQuery = ""
     var destinationQuery = ""
     var usesCurrentLocation = true
@@ -130,6 +130,7 @@ final class MapsSession {
     private(set) var errorMessage: String?
 
     @ObservationIgnored private let systemData: SystemDataStore
+    @ObservationIgnored private var visibleRegion: MKCoordinateRegion?
 
     init(systemData: SystemDataStore) {
         self.systemData = systemData
@@ -167,11 +168,11 @@ final class MapsSession {
 
     func centerOnCurrentLocation() {
         guard let location = systemData.location else { return }
-        cameraPosition = .region(
+        setCameraRegion(
             MKCoordinateRegion(
                 center: location.coordinate,
-                latitudinalMeters: 1_800,
-                longitudinalMeters: 1_800
+                latitudinalMeters: 8_000,
+                longitudinalMeters: 16_000
             )
         )
     }
@@ -210,7 +211,7 @@ final class MapsSession {
             sourceItem = source
             destinationItem = destination
             self.route = route
-            cameraPosition = .rect(Self.padded(route.polyline.boundingMapRect))
+            setCameraRegion(Self.navigationRegion(for: route.polyline.boundingMapRect))
         } catch {
             route = nil
             destinationItem = nil
@@ -252,6 +253,45 @@ final class MapsSession {
             with: items,
             launchOptions: [MKLaunchOptionsDirectionsModeKey: transport.launchOption]
         )
+    }
+
+    func updateVisibleRegion(_ region: MKCoordinateRegion) {
+        guard Self.isValid(region) else { return }
+        visibleRegion = region
+    }
+
+    func handle(_ command: InputCommand) {
+        switch command {
+        case .scroll(let delta):
+            pan(by: delta)
+        case .magnify(let scaleDelta, _):
+            zoom(by: scaleDelta)
+        default:
+            break
+        }
+    }
+
+    private func pan(by delta: CGVector) {
+        guard delta.dx.isFinite, delta.dy.isFinite,
+              var region = visibleRegion else { return }
+        region.center.latitude -= Double(delta.dy) * region.span.latitudeDelta * 0.8
+        region.center.longitude += Double(delta.dx) * region.span.longitudeDelta * 0.8
+        setCameraRegion(Self.normalized(region))
+    }
+
+    private func zoom(by scaleDelta: CGFloat) {
+        guard scaleDelta.isFinite, scaleDelta > 0,
+              var region = visibleRegion else { return }
+        let factor = 1 / Double(scaleDelta)
+        region.span.latitudeDelta *= factor
+        region.span.longitudeDelta *= factor
+        setCameraRegion(Self.normalized(region))
+    }
+
+    private func setCameraRegion(_ region: MKCoordinateRegion) {
+        let normalized = Self.normalized(region)
+        visibleRegion = normalized
+        cameraPosition = .region(normalized)
     }
 
     private func resolve(_ query: String) async throws -> MKMapItem {
@@ -315,10 +355,36 @@ final class MapsSession {
         return item
     }
 
-    nonisolated private static func padded(_ rect: MKMapRect) -> MKMapRect {
-        rect.insetBy(
-            dx: -max(rect.size.width * 0.16, 1_200),
-            dy: -max(rect.size.height * 0.22, 1_200)
+    nonisolated private static func navigationRegion(for rect: MKMapRect) -> MKCoordinateRegion {
+        var region = MKCoordinateRegion(rect)
+        region.span.latitudeDelta = max(region.span.latitudeDelta * 1.65, 0.018)
+        region.span.longitudeDelta = max(region.span.longitudeDelta * 1.45, 0.04)
+        return normalized(region)
+    }
+
+    nonisolated private static func normalized(_ region: MKCoordinateRegion) -> MKCoordinateRegion {
+        var region = region
+        region.center.latitude = min(max(region.center.latitude, -85), 85)
+        region.center.longitude = ((region.center.longitude + 180).truncatingRemainder(dividingBy: 360) + 360)
+            .truncatingRemainder(dividingBy: 360) - 180
+        region.span.latitudeDelta = min(max(region.span.latitudeDelta, 0.002), 120)
+        region.span.longitudeDelta = min(max(region.span.longitudeDelta, 0.004), 180)
+        return region
+    }
+
+    nonisolated private static func isValid(_ region: MKCoordinateRegion) -> Bool {
+        region.center.latitude.isFinite
+            && region.center.longitude.isFinite
+            && region.span.latitudeDelta.isFinite
+            && region.span.longitudeDelta.isFinite
+            && region.span.latitudeDelta > 0
+            && region.span.longitudeDelta > 0
+    }
+
+    nonisolated fileprivate static var cameraBounds: MapCameraBounds {
+        MapCameraBounds(
+            minimumDistance: 250,
+            maximumDistance: 8_000_000
         )
     }
 
@@ -345,112 +411,199 @@ struct MapsSurfaceView: View {
     @Bindable var session: MapsSession
 
     var body: some View {
-        Map(position: $session.cameraPosition, interactionModes: []) {
-            if let route = session.route {
-                MapPolyline(route.polyline)
-                    .stroke(.cyan.opacity(0.88), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
-            }
-            if let source = session.sourceItem {
-                Annotation("Start", coordinate: source.placemark.coordinate) {
-                    Circle()
-                        .fill(.cyan)
-                        .frame(width: 16, height: 16)
-                        .overlay(Circle().stroke(.white, lineWidth: 3))
-                        .shadow(color: .black.opacity(0.35), radius: 5)
-                }
-            }
-            if let destination = session.destinationItem {
-                Marker(session.destinationTitle, coordinate: destination.placemark.coordinate)
-                    .tint(.red)
-            }
+        GeometryReader { proxy in
+            let lensSize = NavigationLensLayout.size(in: proxy.size)
+
+            navigationLens
+                .frame(width: lensSize.width, height: lensSize.height)
+                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
-        .mapStyle(
-            .standard(
-                elevation: .flat,
-                emphasis: .muted,
-                pointsOfInterest: .excludingAll,
-                showsTraffic: false
-            )
-        )
-        .overlay {
-            LinearGradient(
-                colors: [.black.opacity(0.34), .clear, .black.opacity(0.58)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .allowsHitTesting(false)
-        }
-        .overlay(alignment: .topLeading) {
-            destinationHeader
-        }
-        .overlay(alignment: .bottomLeading) {
-            routeGuidance
-        }
-        .background(Color(red: 0.04, green: 0.055, blue: 0.065))
+        .background(Color.clear)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Apple Maps route to \(session.destinationTitle)")
     }
 
-    private var destinationHeader: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "map.fill")
-                .foregroundStyle(.cyan)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("APPLE MAPS")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1.3)
-                    .foregroundStyle(.white.opacity(0.62))
-                Text(session.destinationTitle)
-                    .font(.headline)
-                    .lineLimit(1)
+    private var navigationLens: some View {
+        ZStack {
+            Map(
+                position: $session.cameraPosition,
+                bounds: MapsSession.cameraBounds,
+                interactionModes: [.pan, .zoom]
+            ) {
+                if let route = session.route {
+                    MapPolyline(route.polyline)
+                        .stroke(
+                            .cyan.opacity(0.94),
+                            style: StrokeStyle(
+                                lineWidth: 9,
+                                lineCap: .round,
+                                lineJoin: .round
+                            )
+                        )
+                }
+                if !session.usesCurrentLocation, let source = session.sourceItem {
+                    Annotation("Start", coordinate: source.placemark.coordinate) {
+                        NavigationPositionMarker()
+                    }
+                }
+                if let destination = session.destinationItem {
+                    Marker(session.destinationTitle, coordinate: destination.placemark.coordinate)
+                        .tint(.red.opacity(0.82))
+                }
             }
+            .mapStyle(
+                .standard(
+                    elevation: .flat,
+                    emphasis: .muted,
+                    pointsOfInterest: .excludingAll,
+                    showsTraffic: false
+                )
+            )
+            .onMapCameraChange(frequency: .onEnd) { context in
+                session.updateVisibleRegion(context.region)
+            }
+            .saturation(0.78)
+            .contrast(1.08)
+
+            NavigationLensVignette()
+
+            if session.usesCurrentLocation, session.route != nil {
+                NavigationPositionMarker()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 30)
+                    .allowsHitTesting(false)
+            }
+
+            lensContent
+                .allowsHitTesting(false)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial, in: Capsule())
-        .padding(18)
+        .clipShape(Ellipse())
+        .overlay {
+            Ellipse()
+                .strokeBorder(.cyan.opacity(0.16), lineWidth: 1.5)
+        }
+        .shadow(color: .cyan.opacity(0.13), radius: 30)
+        .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
     }
 
     @ViewBuilder
-    private var routeGuidance: some View {
+    private var lensContent: some View {
         if session.isLoading {
-            Label("Building route…", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                .font(.headline)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 13)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(18)
-        } else if let summary = session.routeSummary {
-            HStack(spacing: 14) {
-                Image(systemName: session.transport.systemImage)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.cyan)
-                    .frame(width: 36, height: 36)
-                    .background(.cyan.opacity(0.14), in: Circle())
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(summary)
-                        .font(.headline.monospacedDigit())
-                    if let instruction = session.firstInstruction {
-                        Text(instruction)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.68))
-                            .lineLimit(1)
-                    }
+            ProgressView()
+                .controlSize(.large)
+                .tint(.white.opacity(0.88))
+        } else if session.route != nil {
+            VStack(spacing: 0) {
+                if let instruction = session.firstInstruction {
+                    NavigationTurnCallout(instruction: instruction)
+                        .padding(.top, 22)
+                }
+
+                Spacer(minLength: 0)
+
+                if let summary = session.routeSummary {
+                    Label(summary, systemImage: session.transport.systemImage)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.78))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .background(.black.opacity(0.48), in: Capsule())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 22)
+                        .padding(.bottom, 18)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(18)
         } else {
-            Label("Choose a route on iPhone", systemImage: "location.magnifyingglass")
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.72))
-                .padding(.horizontal, 18)
-                .padding(.vertical, 13)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(18)
+            Label("Choose a route", systemImage: "location.magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.78))
+                .padding(.horizontal, 15)
+                .padding(.vertical, 10)
+                .background(.black.opacity(0.44), in: Capsule())
         }
+    }
+}
+
+private enum NavigationLensLayout {
+    static func size(in availableSize: CGSize) -> CGSize {
+        let width = min(availableSize.width * 0.92, availableSize.height * 2.45)
+        let height = min(availableSize.height * 0.82, width * 0.46)
+        return CGSize(width: max(width, 1), height: max(height, 1))
+    }
+}
+
+private struct NavigationPositionMarker: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [.indigo.opacity(0.96), .indigo.opacity(0.7)],
+                        center: .center,
+                        startRadius: 4,
+                        endRadius: 34
+                    )
+                )
+                .frame(width: 66, height: 66)
+                .blur(radius: 3)
+
+            Image(systemName: "location.north.fill")
+                .font(.system(size: 38, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .indigo.opacity(0.72), radius: 8)
+        }
+        .frame(width: 76, height: 76)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct NavigationTurnCallout: View {
+    let instruction: String
+
+    var body: some View {
+        Label(instruction, systemImage: turnSystemImage)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.92))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(.black.opacity(0.55), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 1)
+            }
+            .frame(maxWidth: 330)
+            .shadow(color: .black.opacity(0.28), radius: 9, y: 4)
+    }
+
+    private var turnSystemImage: String {
+        let normalized = instruction.lowercased()
+        if normalized.contains("left") { return "arrow.turn.up.left" }
+        if normalized.contains("right") { return "arrow.turn.up.right" }
+        if normalized.contains("arrive") || normalized.contains("destination") {
+            return "flag.checkered"
+        }
+        return "arrow.up"
+    }
+}
+
+private struct NavigationLensVignette: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [.black.opacity(0.42), .clear, .black.opacity(0.42)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            LinearGradient(
+                colors: [.black.opacity(0.48), .clear, .black.opacity(0.48)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            Color.indigo.opacity(0.08)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

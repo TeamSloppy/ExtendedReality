@@ -11,7 +11,11 @@ import {
   isSpatialMessage,
   spatialMessage,
 } from '../spatial-video/src/spatial.js'
-import { isGoogleWebClientID, normalizeGoogleClientID } from '../spatial-video/src/youtube-auth.js'
+import {
+  DEFAULT_GOOGLE_OAUTH_CLIENT_ID,
+  isGoogleWebClientID,
+  normalizeGoogleClientID,
+} from '../spatial-video/src/youtube-auth.js'
 import {
   fetchSubscriptionFeed,
   subscriptionChannelIDs,
@@ -75,6 +79,11 @@ test('versions messages exchanged between spatial panels', () => {
 
 test('validates Google OAuth Web client IDs without persisting access tokens', () => {
   const clientID = '123456789-spatialvideo.apps.googleusercontent.com'
+  assert.equal(
+    DEFAULT_GOOGLE_OAUTH_CLIENT_ID,
+    '185337776045-6rt3m67ei3kjp1o8o9dd61rdduv99685.apps.googleusercontent.com',
+  )
+  assert.equal(isGoogleWebClientID(DEFAULT_GOOGLE_OAUTH_CLIENT_ID), true)
   assert.equal(normalizeGoogleClientID(`  ${clientID}\n`), clientID)
   assert.equal(isGoogleWebClientID(clientID), true)
   assert.equal(isGoogleWebClientID('not-a-web-client-id'), false)

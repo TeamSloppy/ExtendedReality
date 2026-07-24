@@ -14,7 +14,44 @@ final class DashboardStoreTests: XCTestCase {
             return false
         }))
         XCTAssertTrue(store.launchers.contains(where: { $0.content == .app(.maps) }))
-        XCTAssertEqual(store.widgets.count, 3)
+        XCTAssertEqual(store.widgets.count, 4)
+        XCTAssertTrue(store.widgets.contains(where: { $0.content == .widget(.translation) }))
+    }
+
+    func testDashboardApplicationsContainOnlyNativeAppsAndPWAs() {
+        let store = DashboardStore(defaults: makeDefaults(), storageKey: #function)
+
+        XCTAssertFalse(store.applications.isEmpty)
+        XCTAssertTrue(store.applications.allSatisfy { item in
+            switch item.content {
+            case .app, .pwa: true
+            case .bookmark, .widget: false
+            }
+        })
+    }
+
+    func testDashboardApplicationProjectionUsesCenteredFiveColumnGrid() {
+        let store = DashboardStore(defaults: makeDefaults(), storageKey: #function)
+        let canvasSize = CGSize(width: 1_920, height: 1_080)
+
+        let presentations = DashboardApplicationProjection.presentations(
+            for: store.launchers,
+            in: canvasSize
+        )
+
+        XCTAssertEqual(presentations.count, store.launchers.count)
+        XCTAssertTrue(presentations.allSatisfy { $0.rotationDegrees == 0 })
+        XCTAssertEqual(Set(presentations.map(\.center)).count, presentations.count)
+        XCTAssertTrue(presentations.allSatisfy { presentation in
+            CGRect(origin: .zero, size: canvasSize).contains(presentation.center)
+                && presentation.size.width > 0
+                && presentation.size.height > 0
+        })
+
+        let firstRow = Array(presentations.prefix(DashboardApplicationProjection.maximumColumnCount))
+        XCTAssertEqual(firstRow.map(\.center.y), Array(repeating: firstRow[0].center.y, count: firstRow.count))
+        XCTAssertEqual(firstRow.map(\.center.x), firstRow.map(\.center.x).sorted())
+        XCTAssertGreaterThan(firstRow[0].center.y, canvasSize.height * 0.4)
     }
 
     func testBookmarkIsNormalizedAndPersisted() throws {
@@ -96,8 +133,57 @@ final class DashboardStoreTests: XCTestCase {
 
         store.resetLayout()
 
-        XCTAssertEqual(store.items.count, 12)
+        XCTAssertEqual(store.items.count, 13)
         XCTAssertNotEqual(store.item(id: item.id)?.placement.zIndex, -1)
+    }
+
+    func testScenariosKeepIndependentWidgetSetsAndPlacements() throws {
+        let defaults = makeDefaults()
+        let key = #function
+        let store = DashboardStore(defaults: defaults, storageKey: key)
+
+        store.selectScenario(.personal)
+        store.addWidget(.focus)
+        let personalFocus = try XCTUnwrap(
+            store.widgets.first(where: { $0.content == .widget(.focus) })
+        )
+        store.beginArranging(personalFocus.id)
+        store.moveSelected(normalizedDelta: CGVector(dx: 0.18, dy: 0.12))
+        store.endArranging()
+        let personalPlacement = try XCTUnwrap(store.item(id: personalFocus.id)?.placement)
+
+        store.selectScenario(.work)
+        store.toggleWidget(.focus)
+        XCTAssertFalse(store.containsWidget(.focus))
+
+        store.selectScenario(.personal)
+        XCTAssertTrue(store.containsWidget(.focus))
+        XCTAssertEqual(store.item(id: personalFocus.id)?.placement, personalPlacement)
+
+        let restored = DashboardStore(defaults: defaults, storageKey: key)
+        XCTAssertEqual(restored.activeScenario, .personal)
+        XCTAssertTrue(restored.containsWidget(.focus))
+        XCTAssertEqual(restored.item(id: personalFocus.id)?.placement, personalPlacement)
+    }
+
+    func testLegacyWidgetsMigrateIntoWorkScenario() throws {
+        let defaults = makeDefaults()
+        let key = #function
+        let legacyItems = [
+            DashboardItem(content: .app(.browser)),
+            DashboardItem(content: .widget(.health)),
+        ]
+        defaults.set(try JSONEncoder().encode(legacyItems), forKey: key)
+
+        let migrated = DashboardStore(defaults: defaults, storageKey: key)
+
+        XCTAssertEqual(migrated.activeScenario, .work)
+        XCTAssertTrue(migrated.containsWidget(.health))
+        migrated.selectScenario(.personal)
+        migrated.toggleWidget(.health)
+        XCTAssertFalse(migrated.containsWidget(.health))
+        migrated.selectScenario(.work)
+        XCTAssertTrue(migrated.containsWidget(.health))
     }
 
     func testDashboardProjectionUsesOnlyRollForStabilization() throws {
@@ -180,6 +266,24 @@ final class DashboardStoreTests: XCTestCase {
         let restored = DashboardStore(defaults: defaults, storageKey: key)
 
         XCTAssertFalse(restored.items.contains(where: { $0.content == .app(.maps) }))
+    }
+
+    func testExistingDashboardReceivesTranslationWidgetOnlyOnce() throws {
+        let defaults = makeDefaults()
+        let key = #function
+        let legacyItems = [DashboardItem(content: .widget(.calendar))]
+        defaults.set(try JSONEncoder().encode(legacyItems), forKey: key)
+
+        let migrated = DashboardStore(defaults: defaults, storageKey: key)
+        XCTAssertEqual(migrated.items.filter { $0.content == .widget(.translation) }.count, 1)
+
+        let translationIndex = try XCTUnwrap(
+            migrated.items.firstIndex(where: { $0.content == .widget(.translation) })
+        )
+        migrated.remove(at: IndexSet(integer: translationIndex))
+        let restored = DashboardStore(defaults: defaults, storageKey: key)
+
+        XCTAssertFalse(restored.items.contains(where: { $0.content == .widget(.translation) }))
     }
 
     private func makeDefaults() -> UserDefaults {

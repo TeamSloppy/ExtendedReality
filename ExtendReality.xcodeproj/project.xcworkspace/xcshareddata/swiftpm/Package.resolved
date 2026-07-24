@@ -1,5 +1,5 @@
 {
-  "originHash" : "6e99691cf8f4d78a22580c6b1eb18b0f4fa2272c6dcf779325e773ee1f8e7a90",
+  "originHash" : "b4cfec6bf11018d89f2c257e849b992c1cdaaa3a372013a3b1355c843e02d6e2",
   "pins" : [
     {
       "identity" : "cryptoswift",
@@ -25,6 +25,14 @@
       "location" : "https://github.com/royalapplications/royalvnc.git",
       "state" : {
         "revision" : "337197afdb32020d3dfdb7d058989115b740cdc4"
+      }
+    },
+    {
+      "identity" : "youtubekit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/alexeichhorn/YouTubeKit.git",
+      "state" : {
+        "revision" : "7cc81901f9bbf2f9d2766bd8a54e128b974e4c94"
       }
     }
   ],

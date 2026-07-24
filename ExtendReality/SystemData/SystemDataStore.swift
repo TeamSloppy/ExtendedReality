@@ -65,6 +65,7 @@ final class SystemDataStore: NSObject, @preconcurrency CLLocationManagerDelegate
     private(set) var location: DeviceLocationData?
     private(set) var healthSummary: HealthSummaryData?
     private(set) var isFocused: Bool?
+    private(set) var focusProfile: ExtendRealityFocusProfile?
     private(set) var focusUpdatedAt: Date?
     private(set) var lastErrorMessage: String?
 
@@ -211,6 +212,8 @@ final class SystemDataStore: NSObject, @preconcurrency CLLocationManagerDelegate
         let center = INFocusStatusCenter.default
         focusAuthorization = Self.focusAuthorization(from: center.authorizationStatus)
         isFocused = focusAuthorization == .authorized ? center.focusStatus.isFocused : nil
+        let selection = ExtendRealityFocusStorage.load()
+        focusProfile = selection?.profile
         focusUpdatedAt = .now
     }
 

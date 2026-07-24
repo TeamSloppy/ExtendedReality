@@ -8,6 +8,8 @@ final class SurfaceRegistry {
     private unowned let workspace: WorkspaceStore
     private unowned let systemData: SystemDataStore
     private let keychain: KeychainStore
+    private let youtubeAPI: YouTubeAPIClient
+    private let youtubeAuth: YouTubeAuthSession
     private let pwaCapabilityProvider: (String, PWACapability) -> Bool
     private let pwaDataProvider: (PWACapability) throws -> [String: Any]
     private var browsers: [UUID: BrowserWindowSession] = [:]
@@ -25,6 +27,8 @@ final class SurfaceRegistry {
         workspace: WorkspaceStore,
         systemData: SystemDataStore,
         keychain: KeychainStore,
+        youtubeAPI: YouTubeAPIClient,
+        youtubeAuth: YouTubeAuthSession,
         pwaCapabilityProvider: @escaping (String, PWACapability) -> Bool,
         pwaDataProvider: @escaping (PWACapability) throws -> [String: Any]
     ) {
@@ -32,6 +36,8 @@ final class SurfaceRegistry {
         self.workspace = workspace
         self.systemData = systemData
         self.keychain = keychain
+        self.youtubeAPI = youtubeAPI
+        self.youtubeAuth = youtubeAuth
         self.pwaCapabilityProvider = pwaCapabilityProvider
         self.pwaDataProvider = pwaDataProvider
     }
@@ -61,14 +67,16 @@ final class SurfaceRegistry {
         if let browser = browsers[id] { return browser }
         let browser = BrowserWindowSession(
             initialURL: initialURL,
-            textInputFocusHandler: { [weak inputRouter] in
-                inputRouter?.requestTextInputFocus()
+            textInputFocusHandler: { [weak inputRouter] text in
+                inputRouter?.requestTextInputFocus(initialText: text)
             },
             sessionFactory: { [weak inputRouter] initialURL, loadsContent in
                 BrowserSession(
                     initialURL: initialURL,
                     loadsContent: loadsContent,
-                    textInputFocusHandler: { inputRouter?.requestTextInputFocus() }
+                    textInputFocusHandler: { text in
+                        inputRouter?.requestTextInputFocus(initialText: text)
+                    }
                 )
             }
         )
@@ -81,6 +89,7 @@ final class SurfaceRegistry {
         if let session = maps[id] { return session }
         let session = MapsSession(systemData: systemData)
         maps[id] = session
+        inputRouter.register(session, for: id)
         return session
     }
 
@@ -119,8 +128,8 @@ final class SurfaceRegistry {
                 try pwaDataProvider(capability)
             },
             spatialWindowClient: windowClient,
-            textInputFocusHandler: { [weak inputRouter] in
-                inputRouter?.requestTextInputFocus()
+            textInputFocusHandler: { [weak inputRouter] text in
+                inputRouter?.requestTextInputFocus(initialText: text)
             }
         )
         pwaBrowsers[id] = session
@@ -151,17 +160,32 @@ final class SurfaceRegistry {
     }
 
     func youtubeSession(for id: UUID, initialVideoID: String? = nil) -> YouTubeSession {
-        if let session = youtube[id] { return session }
+        if let session = youtube[id] {
+            updateYouTubeLayout(for: id, showsSpatialComposition: session.showsSpatialComposition)
+            return session
+        }
         let session = YouTubeSession(
             initialVideoID: initialVideoID,
-            textInputFocusHandler: { [weak inputRouter] in
-                inputRouter?.requestTextInputFocus()
+            apiClient: youtubeAPI,
+            authSession: youtubeAuth,
+            textInputFocusHandler: { [weak inputRouter] text in
+                inputRouter?.requestTextInputFocus(initialText: text)
             },
             playbackStateDidChange: { [weak self] in
                 self?.playbackStateDidChange?()
+            },
+            spatialPresentationDidChange: { [weak self] showsSpatialComposition in
+                self?.updateYouTubeLayout(
+                    for: id,
+                    showsSpatialComposition: showsSpatialComposition
+                )
             }
         )
         youtube[id] = session
+        updateYouTubeLayout(
+            for: id,
+            showsSpatialComposition: session.showsSpatialComposition
+        )
         inputRouter.register(session, for: id)
         for panelID: SpatialPanelID in ["video", "info", "search", "transport"] {
             let surfaceID = SpatialPanelSurfaceID(windowID: id, panelID: panelID)
@@ -170,6 +194,15 @@ final class SurfaceRegistry {
             inputRouter.register(target, for: panelID, in: id)
         }
         return session
+    }
+
+    private func updateYouTubeLayout(
+        for windowID: UUID,
+        showsSpatialComposition: Bool
+    ) {
+        let layout: SpatialAppLayout = showsSpatialComposition ? .youtube : .youtubeCompact
+        guard workspace.layout(for: windowID) != layout else { return }
+        try? workspace.setLayout(layout, for: windowID)
     }
 
     func pwaPanel(
@@ -196,8 +229,8 @@ final class SurfaceRegistry {
             dataProvider: { [pwaDataProvider] capability in
                 try pwaDataProvider(capability)
             },
-            textInputFocusHandler: { [weak inputRouter] in
-                inputRouter?.requestTextInputFocus()
+            textInputFocusHandler: { [weak inputRouter] text in
+                inputRouter?.requestTextInputFocus(initialText: text)
             }
         )
         pwaPanelBrowsers[surfaceID] = session
@@ -217,8 +250,8 @@ final class SurfaceRegistry {
         if let session = macStreams[id] { return session }
         let session = BrowserSession(
             initialURL: initialURL,
-            textInputFocusHandler: { [weak inputRouter] in
-                inputRouter?.requestTextInputFocus()
+            textInputFocusHandler: { [weak inputRouter] text in
+                inputRouter?.requestTextInputFocus(initialText: text)
             }
         )
         macStreams[id] = session

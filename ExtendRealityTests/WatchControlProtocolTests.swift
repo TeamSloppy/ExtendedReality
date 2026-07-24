@@ -37,16 +37,16 @@ final class WatchControlProtocolTests: XCTestCase {
 
         XCTAssertNil(
             processor.consume(
-                rotationRateX: 0,
-                rotationRateY: 1,
+                rotationRateX: 1,
+                rotationRateY: 0,
                 timestamp: 0.02,
                 sensitivity: 1,
                 invertVertical: false
             )
         )
         let delta = processor.consume(
-            rotationRateX: 0,
-            rotationRateY: 1,
+            rotationRateX: 1,
+            rotationRateY: 0,
             timestamp: 0.04,
             sensitivity: 1,
             invertVertical: false
@@ -68,8 +68,8 @@ final class WatchControlProtocolTests: XCTestCase {
         )
 
         let spike = processor.consume(
-            rotationRateX: 0,
-            rotationRateY: 100,
+            rotationRateX: 100,
+            rotationRateY: 0,
             timestamp: 0.04,
             sensitivity: 1,
             invertVertical: false
@@ -77,8 +77,8 @@ final class WatchControlProtocolTests: XCTestCase {
         XCTAssertLessThan(spike?.x ?? .infinity, 0.04)
         XCTAssertNil(
             processor.consume(
-                rotationRateX: 0,
-                rotationRateY: 1,
+                rotationRateX: 1,
+                rotationRateY: 0,
                 timestamp: 0.3,
                 sensitivity: 1,
                 invertVertical: false
@@ -89,10 +89,10 @@ final class WatchControlProtocolTests: XCTestCase {
     func testWristPointerCanInvertVerticalMovement() {
         var positive = WristPointerMotionProcessor()
         var negative = WristPointerMotionProcessor()
-        _ = positive.consume(rotationRateX: 1, rotationRateY: 0, timestamp: 0, sensitivity: 1, invertVertical: false)
-        _ = negative.consume(rotationRateX: 1, rotationRateY: 0, timestamp: 0, sensitivity: 1, invertVertical: true)
-        let positiveDelta = positive.consume(rotationRateX: 1, rotationRateY: 0, timestamp: 0.04, sensitivity: 1, invertVertical: false)
-        let negativeDelta = negative.consume(rotationRateX: 1, rotationRateY: 0, timestamp: 0.04, sensitivity: 1, invertVertical: true)
+        _ = positive.consume(rotationRateX: 0, rotationRateY: 1, timestamp: 0, sensitivity: 1, invertVertical: false)
+        _ = negative.consume(rotationRateX: 0, rotationRateY: 1, timestamp: 0, sensitivity: 1, invertVertical: true)
+        let positiveDelta = positive.consume(rotationRateX: 0, rotationRateY: 1, timestamp: 0.04, sensitivity: 1, invertVertical: false)
+        let negativeDelta = negative.consume(rotationRateX: 0, rotationRateY: 1, timestamp: 0.04, sensitivity: 1, invertVertical: true)
 
         XCTAssertGreaterThan(positiveDelta?.y ?? 0, 0)
         XCTAssertLessThan(negativeDelta?.y ?? 0, 0)
@@ -103,10 +103,28 @@ final class WatchControlProtocolTests: XCTestCase {
         XCTAssertEqual(WatchControlCommand(dictionary: expected.dictionary), expected)
     }
 
+    func testPointerGuideCommandsRoundTrip() {
+        let started = WatchControlCommand.pointerStarted(
+            showsGuide: true,
+            wristLocation: .right
+        )
+        let stopped = WatchControlCommand.pointerStopped
+
+        XCTAssertEqual(WatchControlCommand(dictionary: started.dictionary), started)
+        XCTAssertEqual(WatchControlCommand(dictionary: stopped.dictionary), stopped)
+    }
+
     func testVoiceAssistantCommandRoundTrip() {
         let expected = WatchControlCommand.toggleVoiceAssistant
         XCTAssertEqual(WatchControlCommand(dictionary: expected.dictionary), expected)
         XCTAssertEqual(expected.dictionary["command"] as? String, "toggleVoiceAssistant")
+    }
+
+    func testDoubleClickCommandRoundTrip() {
+        let expected = WatchControlCommand.doubleClick
+
+        XCTAssertEqual(WatchControlCommand(dictionary: expected.dictionary), expected)
+        XCTAssertEqual(expected.dictionary["command"] as? String, "doubleClick")
     }
 
     func testPlaybackCommandsRoundTrip() {

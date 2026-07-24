@@ -62,8 +62,12 @@ struct WristPointerMotionProcessor {
             return nil
         }
 
-        let horizontalRate = min(max(rotationRateY, -Self.maximumRotationRate), Self.maximumRotationRate)
-        let verticalRate = min(max(rotationRateX, -Self.maximumRotationRate), Self.maximumRotationRate)
+        // The watch is worn in portrait orientation: rotation around its X axis
+        // follows a left/right wrist turn, while Y follows an up/down turn.
+        // Keeping those axes aligned with the canvas makes the watch behave
+        // like a handheld ray pointer instead of rotating movement by 90°.
+        let horizontalRate = min(max(rotationRateX, -Self.maximumRotationRate), Self.maximumRotationRate)
+        let verticalRate = min(max(rotationRateY, -Self.maximumRotationRate), Self.maximumRotationRate)
         let filterWeight = 1 - exp(-Self.filterResponse * rawInterval)
         filteredHorizontalRate += filterWeight * (horizontalRate - filteredHorizontalRate)
         filteredVerticalRate += filterWeight * (verticalRate - filteredVerticalRate)

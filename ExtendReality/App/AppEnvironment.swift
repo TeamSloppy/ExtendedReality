@@ -13,6 +13,7 @@ final class AppEnvironment {
     let systemData: SystemDataStore
     let inputRouter: InputRouter
     let hardwareMouseInput: HardwareMouseInput
+    let handTracking: HandTrackingController
     let surfaces: SurfaceRegistry
     let headPoseProvider: any HeadPoseProvider
     let headPose: HeadPoseController
@@ -20,9 +21,11 @@ final class AppEnvironment {
     let debugSocket: DebugSocketStreamer
     let keychain: KeychainStore
     let youtubeAPI: YouTubeAPIClient
+    let youtubeAuth: YouTubeAuthSession
     let macStreamClient: MacStreamClient
     let externalDisplayCapture: ExternalDisplayCaptureCoordinator
     let microphoneHub: MicrophoneAudioHub
+    let liveTranslation: LiveTranslationController
     let voiceAssistantSettings: VoiceAssistantSettings
     let voiceAssistant: VoiceAssistantCoordinator
     let wakeWordController: WakeWordController
@@ -30,6 +33,7 @@ final class AppEnvironment {
 
     private let defaults: UserDefaults
     private var macStreamWindowIDsByEndpoint: [String: UUID] = [:]
+    private var resumesHandTrackingAfterForeground = false
 
     private init(
         storesDataInMemory: Bool = false,
@@ -63,6 +67,11 @@ final class AppEnvironment {
         )
         self.systemData = systemData
         inputRouter = InputRouter()
+        handTracking = HandTrackingController(
+            defaults: dashboardDefaults,
+            preferencePrefix: "ExtendReality.handTracking",
+            discoversCameras: !isRunningTests && !storesDataInMemory
+        )
         hardwareMouseInput = HardwareMouseInput(
             inputRouter: inputRouter,
             activeWindowID: { [weak workspace] in workspace?.activeWindowID },
@@ -73,6 +82,10 @@ final class AppEnvironment {
         voiceModeActivationRouter = .shared
         microphoneHub = MicrophoneAudioHub()
         youtubeAPI = YouTubeAPIClient()
+        youtubeAuth = YouTubeAuthSession(
+            keychain: keychain,
+            restoresPreviousSignIn: !isRunningTests && !storesDataInMemory
+        )
         macStreamClient = MacStreamClient(microphoneHub: microphoneHub)
         externalDisplayCapture = ExternalDisplayCaptureCoordinator()
         surfaces = SurfaceRegistry(
@@ -80,6 +93,8 @@ final class AppEnvironment {
             workspace: workspace,
             systemData: systemData,
             keychain: keychain,
+            youtubeAPI: youtubeAPI,
+            youtubeAuth: youtubeAuth,
             pwaCapabilityProvider: { appID, capability in
                 pwaStore.installation(for: appID)?.grants(capability) == true
             },
@@ -87,11 +102,24 @@ final class AppEnvironment {
                 try systemData.pwaPayload(for: capability)
             }
         )
-        let provider: any HeadPoseProvider = isRunningTests
-            ? HeadLockedPoseProvider()
-            : AirPodsHeadPoseProvider()
+        let provider: any HeadPoseProvider
+        if isRunningTests {
+            provider = HeadLockedPoseProvider()
+        } else {
+#if DEBUG && os(iOS)
+            provider = IOSPreferredHeadPoseProvider(
+                primary: XREALPrivateHIDPoseProvider(),
+                fallback: AirPodsHeadPoseProvider()
+            )
+#else
+            provider = AirPodsHeadPoseProvider()
+#endif
+        }
         headPoseProvider = provider
-        headPose = HeadPoseController(provider: provider)
+        headPose = HeadPoseController(
+            provider: provider,
+            defaults: dashboardDefaults
+        )
         voiceAssistant = VoiceAssistantCoordinator(
             settings: voiceAssistantSettings,
             workspace: workspace,
@@ -104,6 +132,13 @@ final class AppEnvironment {
             assistant: voiceAssistant,
             microphoneHub: microphoneHub
         )
+        liveTranslation = LiveTranslationController(
+            audioHub: microphoneHub,
+            defaults: dashboardDefaults
+        )
+        liveTranslation.onListeningChange = { [weak wakeWordController] isListening in
+            wakeWordController?.setLiveTranslationActive(isListening)
+        }
         watchRemote = WatchRemoteController(
             workspace: workspace,
             inputRouter: inputRouter,
@@ -155,13 +190,27 @@ final class AppEnvironment {
         inputRouter.statusBarActionHandler = { [weak self] action in
             guard let self else { return }
             switch action {
+            case .toggleDashboardScenarioPicker:
+                dashboard.toggleScenarioPicker()
+            case .selectDashboardScenario(let scenario):
+                dashboard.selectScenario(scenario)
             case .dashboard:
-                showDashboard()
+                toggleDashboard()
+            case .widgets:
+                showWidgets()
+            case .windows:
+                showWindows()
+            case .toggleWidgetPicker:
+                dashboard.toggleWidgetPicker()
+            case .toggleWidget(let kind):
+                dashboard.toggleWidget(kind)
             case .pointerMode:
                 workspace.controlMode = .pointer
                 dashboard.clearSelection()
             case .arrangeMode:
                 workspace.controlMode = .arrange
+                dashboard.dismissWidgetPicker()
+                dashboard.dismissScenarioPicker()
             case .toggleWorkspaceLayout:
                 workspace.toggleLayoutMode(for: headPose.pose)
             case .recenter:
@@ -173,20 +222,24 @@ final class AppEnvironment {
         inputRouter.dockActionHandler = { [weak self] action in
             guard let self else { return }
             switch action {
-            case .dismiss:
-                workspace.dismissDock()
-                inputRouter.clearDockHitFrames()
-            case .launch(let itemID):
-                activateDashboardItem(itemID)
+            case .focus(let windowID):
+                workspace.focusAndCenter(windowID, for: headPose.pose)
+                inputRouter.setDashboardPresented(false)
+                inputRouter.resetCursor()
             }
             self.watchRemote.syncState()
         }
-        inputRouter.appSwitcherActionHandler = { [weak self] windowID in
+        inputRouter.appSwitcherActionHandler = { [weak self] action in
             guard let self else { return }
-            workspace.focusAndCenter(windowID, for: headPose.pose)
-            inputRouter.setAppSwitcherPresented(false)
-            inputRouter.resetCursor()
-            watchRemote.syncState()
+            switch action {
+            case .focus(let windowID):
+                workspace.focusAndCenter(windowID, for: headPose.pose)
+                inputRouter.setAppSwitcherPresented(false)
+                inputRouter.resetCursor()
+                watchRemote.syncState()
+            case .close(let windowID):
+                closeWindow(windowID)
+            }
         }
         inputRouter.windowFocusHandler = { [weak self] windowID in
             guard let self else { return }
@@ -199,11 +252,50 @@ final class AppEnvironment {
         inputRouter.pointerHoverHandler = {
             ControllerHaptics.hover()
         }
+        handTracking.eventHandler = { [weak self] events, _ in
+            self?.handleHandPointerEvents(events)
+        }
         surfaces.prepare(for: workspace.windows)
     }
 
     func setForegroundActive(_ isActive: Bool) {
         wakeWordController.setForegroundActive(isActive)
+        if isActive {
+            guard resumesHandTrackingAfterForeground else { return }
+            resumesHandTrackingAfterForeground = false
+            Task { await handTracking.start() }
+        } else {
+            resumesHandTrackingAfterForeground = handTracking.isRunning
+            handTracking.stop()
+        }
+    }
+
+    private func handleHandPointerEvents(_ events: [HandPointerEvent]) {
+        for event in events {
+            switch event {
+            case .move(let point):
+                guard workspace.isExternalDisplayConnected else { continue }
+                inputRouter.movePointer(to: point, in: workspace.activeWindowID)
+            case .pointerDown:
+                guard workspace.isExternalDisplayConnected else { continue }
+                inputRouter.pointerDown(in: workspace.activeWindowID)
+                ControllerHaptics.gestureStart()
+            case .pointerUp:
+                inputRouter.pointerUp(in: workspace.activeWindowID)
+            case .magnify(let scaleDelta, let center):
+                guard workspace.isExternalDisplayConnected else { continue }
+                inputRouter.movePointer(to: center, in: workspace.activeWindowID)
+                if workspace.presentationMode == .windows,
+                   !workspace.isDashboardPresented,
+                   workspace.controlMode == .arrange {
+                    workspace.scaleActiveWindow(by: scaleDelta)
+                } else {
+                    inputRouter.magnify(by: scaleDelta, in: workspace.activeWindowID)
+                }
+            case .visibilityChanged(let isVisible):
+                if !isVisible { inputRouter.hideCursor() }
+            }
+        }
     }
 
     @discardableResult
@@ -271,15 +363,44 @@ final class AppEnvironment {
     }
 
     func showWorkspace() {
-        guard workspace.dismissDashboard() else { return }
+        if !workspace.windows.contains(where: { !$0.isMinimized }) {
+            _ = workspace.restoreMostRecentWindow()
+        }
+        workspace.showWindows()
         inputRouter.setAppSwitcherPresented(false)
         inputRouter.setDashboardPresented(false)
         watchRemote.syncState()
     }
 
-    func showDock() {
-        workspace.showDock()
+    func showWidgets() {
+        workspace.showWidgets()
+        dashboard.clearSelection()
+        dashboard.dismissWidgetPicker()
+        dashboard.dismissScenarioPicker()
         inputRouter.setAppSwitcherPresented(false)
+        inputRouter.setDashboardPresented(true)
+        watchRemote.syncState()
+    }
+
+    func showWindows() {
+        workspace.showWindows()
+        dashboard.clearSelection()
+        dashboard.dismissWidgetPicker()
+        dashboard.dismissScenarioPicker()
+        inputRouter.setAppSwitcherPresented(false)
+        inputRouter.setDashboardPresented(false)
+        watchRemote.syncState()
+    }
+
+    func toggleDashboard() {
+        workspace.toggleDashboard()
+        dashboard.clearSelection()
+        dashboard.dismissWidgetPicker()
+        dashboard.dismissScenarioPicker()
+        inputRouter.setAppSwitcherPresented(false)
+        inputRouter.setDashboardPresented(
+            workspace.isDashboardPresented || workspace.presentationMode == .widgets
+        )
         watchRemote.syncState()
     }
 
@@ -313,6 +434,15 @@ final class AppEnvironment {
 
     @discardableResult
     func openPWA(_ installation: PWAInstallation, displayMode: PWADisplayMode) -> WorkspaceWindow {
+        if let existing = workspace.windows.first(where: { window in
+            guard case .pwa(let openInstallation, _) = window.source else { return false }
+            return openInstallation.id == installation.id
+        }) {
+            workspace.focus(existing.id)
+            watchRemote.syncState()
+            return existing
+        }
+
         let window = workspace.addWindow(
             title: installation.manifest.name,
             source: .pwa(installation, displayMode: displayMode)
@@ -369,8 +499,12 @@ final class AppEnvironment {
             watchRemote.syncState()
         case .widget(.focus):
             dashboard.toggleFocusTimer()
-        case .widget(.calendar), .widget(.health):
+        case .widget(.health):
+            Task { await systemData.requestHealthAccess() }
+        case .widget(.calendar):
             break
+        case .widget(.translation):
+            Task { await liveTranslation.toggle() }
         }
     }
 
@@ -496,6 +630,7 @@ extension View {
             .environment(environment.inputRouter)
             .environment(environment.headPose)
             .environment(environment.systemData)
+            .environment(environment.youtubeAuth)
             .environment(environment.voiceAssistant)
             .environment(environment.voiceAssistantSettings)
             .environment(environment.wakeWordController)

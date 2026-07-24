@@ -62,7 +62,7 @@ final class BrowserWindowSessionTests: XCTestCase {
 
     func testSpatialNewTabControlCreatesAndSelectsTab() {
         var focusRequestCount = 0
-        let browser = makeBrowser {
+        let browser = makeBrowser { _ in
             focusRequestCount += 1
         }
         browser.updateSpatialSurfaceSize(CGSize(width: 1_000, height: 600))
@@ -76,19 +76,28 @@ final class BrowserWindowSessionTests: XCTestCase {
         XCTAssertEqual(focusRequestCount, 1)
     }
 
-    func testSpatialAddressControlFocusesKeyboardAndRoutesSubmittedText() {
+    func testSpatialAddressControlMirrorsDraftAndRoutesSubmittedText() {
         var focusRequestCount = 0
-        let browser = makeBrowser {
+        var focusedText: [String] = []
+        let browser = makeBrowser { text in
             focusRequestCount += 1
+            focusedText.append(text)
         }
         browser.updateSpatialSurfaceSize(CGSize(width: 1_000, height: 600))
         let addressPosition = CGPoint(x: 0.50, y: 0.10)
 
         browser.handle(.pointerDown(normalizedPosition: addressPosition))
         browser.handle(.pointerUp(normalizedPosition: addressPosition))
-        browser.handle(.insertText("spatial browser"))
+        browser.handle(.replaceText("spatial browser"))
 
-        XCTAssertEqual(focusRequestCount, 1)
+        XCTAssertEqual(browser.activeSession.address, "spatial browser")
+
+        browser.handle(.pointerDown(normalizedPosition: addressPosition))
+        browser.handle(.pointerUp(normalizedPosition: addressPosition))
+        browser.handle(.submitText("spatial browser"))
+
+        XCTAssertEqual(focusRequestCount, 2)
+        XCTAssertEqual(focusedText, ["https://example.com", "spatial browser"])
         XCTAssertEqual(
             browser.activeSession.address,
             "https://www.google.com/search?q=spatial%20browser"
@@ -132,7 +141,7 @@ final class BrowserWindowSessionTests: XCTestCase {
 
     private func makeBrowser(
         initialURL: String = "https://example.com",
-        textInputFocusHandler: @escaping () -> Void = {}
+        textInputFocusHandler: @escaping (String) -> Void = { _ in }
     ) -> BrowserWindowSession {
         BrowserWindowSession(
             initialURL: initialURL,

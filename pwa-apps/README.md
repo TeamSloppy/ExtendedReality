@@ -6,7 +6,7 @@ This workspace contains three static apps for validating the ExtendReality PWA h
 - **PWA Lab** — diagnostics for Service Worker, Cache Storage, IndexedDB, WebKit media permissions, and ExtendReality host API v3 including spatial-window composition.
 - **Spatial Video** — a spatial online player plus an OPFS/IndexedDB library for user-owned offline media. YouTube content remains online-only and uses the official embedded player.
 
-Spatial Video can optionally connect a Google account with the read-only YouTube scope. It builds a newest-first feed from recent uploads by subscribed channels; the YouTube Data API does not expose the personalized Home recommendations feed. Configure a Google OAuth **Web application** client with the deployed origin (and the local Vite origin when developing), then enter its client ID in Spatial Video settings. The client ID is stored locally, while short-lived access tokens remain in memory and are removed on reload or disconnect.
+Spatial Video can optionally connect a Google account with the read-only YouTube scope. It builds a newest-first feed from recent uploads by subscribed channels; the YouTube Data API does not expose the personalized Home recommendations feed. The app ships with its Google OAuth **Web application** client ID and still allows an override in Spatial Video settings. Configure the OAuth client with `http://127.0.0.1:5175` for local development and the deployed HTTPS origin (currently `https://spectraldragon.github.io`) for production. OAuth client secrets must never be included in this static PWA. Short-lived access tokens remain in memory and are removed on reload or disconnect.
 
 ## Build
 

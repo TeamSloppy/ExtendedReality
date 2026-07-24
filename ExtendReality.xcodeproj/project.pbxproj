@@ -17,33 +17,49 @@
 		0AA6469850FA66AE6F904FAC /* SurfaceHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A667D35E8051C505E518D1C3 /* SurfaceHostView.swift */; };
 		0BEA088E8BD503DED7DEB1EA /* GeneratedStereoRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79EC8480F5EE2582E210D604 /* GeneratedStereoRenderer.swift */; };
 		0DD92944A455CE000E8F0FF1 /* RemoteDisplayLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346DD6AB3CD30D5AF46D464D /* RemoteDisplayLayout.swift */; };
+		0E5F43F0D00A8159B273028E /* ExtendRealityFocusFilterIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23A402F59D9A21B12324DE50 /* ExtendRealityFocusFilterIntent.swift */; };
 		106F32E2F205C81C06E1089A /* RemoteDisplayLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74134FD7B43FAC434B3A6C19 /* RemoteDisplayLayoutTests.swift */; };
 		10A39DEFB09C6AF4490B47A9 /* GeneratedStereoShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF912A706256979F6AF3C /* GeneratedStereoShaders.metal */; };
+		112B14F2A18A9997A9D247FB /* HandTrackingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D16600B2DEA4A4E1536F91 /* HandTrackingModels.swift */; };
+		133500DA90C217176572A664 /* DebugWorldTrackingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E86E884F58FB13492A8F40F4 /* DebugWorldTrackingPolicyTests.swift */; };
 		137001DE3A5B8AEE3FBD4D15 /* WristPointerMotionProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8ABD3CC612E3440C053534 /* WristPointerMotionProcessor.swift */; };
+		1486C807135045CDD727A117 /* SpeechAuthorizationBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C30442D1B6F7AEA28CFE3D1 /* SpeechAuthorizationBridgeTests.swift */; };
 		158F2314F4A49AEBD1261C9E /* MacStreamProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90C2E2D6AD1BF2ECE6FC7453 /* MacStreamProtocolTests.swift */; };
 		160BC1AEFDA36C59E5500C17 /* VoiceAssistantCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24C8F78515AE64007237C8D /* VoiceAssistantCoordinator.swift */; };
 		16BEA5A5DA41949E417167EF /* PWAApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37944EB38BFFCC891D16CCCE /* PWAApp.swift */; };
+		17879ECF562AB47D571B9DA1 /* IOSHandControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C736FDE4BBD232356D7B7B5E /* IOSHandControlView.swift */; };
 		18E1DAD1EB38CBE666E4996D /* MapsRouteLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A7AA4705F1DB1E95003451 /* MapsRouteLinkTests.swift */; };
 		195BEBD7EA5D733945BB3FFD /* RemoteMicrophoneMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3255FAF46CA1102DA71A0F9B /* RemoteMicrophoneMonitor.swift */; };
+		19980EFC6BE1B852E9055423 /* DeviceWorkspacePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD2E047AC0C6ABDED86A1D62 /* DeviceWorkspacePresentationTests.swift */; };
+		1A3854697890DA02C37C3C04 /* IOSHandControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C736FDE4BBD232356D7B7B5E /* IOSHandControlView.swift */; };
 		1D2CF23F247DEB77DF230283 /* VoiceAssistantModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23DF5255C62E91ADF2EE74F5 /* VoiceAssistantModels.swift */; };
+		21F50DC049CF32E682E4949D /* DashboardTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E758C485AAF297A63446B6 /* DashboardTypes.swift */; };
+		22CA0A5A1BE4C45F435392E2 /* VisionHandPoseDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 851A08F7C62A373ADDC3C3F7 /* VisionHandPoseDetector.swift */; };
 		233B21C5B13BC832C4CC00EC /* SloppyVoiceTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A5BF594A5A9EE97BCAF182 /* SloppyVoiceTransportTests.swift */; };
 		24E4B565F992EF6502DABECD /* WorkspaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA21BCAF8862F935A79D5E65 /* WorkspaceModels.swift */; };
 		2658AEAB3EDBD68F95DA6F24 /* WatchControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0ACCFDA16B88CBD9B4BD15 /* WatchControlView.swift */; };
 		2745C19ACA0CC84EEFE34FAE /* WorkspaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA21BCAF8862F935A79D5E65 /* WorkspaceModels.swift */; };
 		27FDF560296444B1295776A0 /* SourceSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DCB83FBD08380C9A386483 /* SourceSidebarView.swift */; };
 		2A3974DF95F5E06845A2766D /* WatchRemoteController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CAAC6AE8D283D6662CEDDC6 /* WatchRemoteController.swift */; };
+		2B0CC9B5B233BCAC45B21763 /* YouTubeKit in Frameworks */ = {isa = PBXBuildFile; productRef = 03913C732ACADEEF536D815B /* YouTubeKit */; };
 		2D4F3318B89E78F3E6FACA73 /* VoiceAssistantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3164A40F159838EDDD6CA1BC /* VoiceAssistantTests.swift */; };
 		2D89D8F1FD27E04A95B08641 /* PWAApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37944EB38BFFCC891D16CCCE /* PWAApp.swift */; };
+		2E8BFF09830C86659B4DC93E /* HandGestureInterpreterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41B3AE5440A9E0C8CA11AA9D /* HandGestureInterpreterTests.swift */; };
+		2F067E0071A652E57DE31105 /* YouTubeDownloadStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C9343C6B1B4FD164F7C6CAF /* YouTubeDownloadStoreTests.swift */; };
 		2FC065419D2DEAC74DB72908 /* SessionAudioProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3EC9A2BF1B4F356C39602E /* SessionAudioProtocol.swift */; };
+		304E10422188E8452415B690 /* LiveTranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19629E2AFFCA9084D35B44A /* LiveTranslationControllerTests.swift */; };
 		315C041F132FA5143D7AD735 /* HardwareMouseInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68948E906E2F9C5B34B50ECB /* HardwareMouseInput.swift */; };
 		323A7000BA4E3C3B97ABE739 /* TrackpadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6CE6E2986B6A7F643C9124 /* TrackpadView.swift */; };
 		3440D8E226C97D81BC3C690F /* SpatialDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4F0E1F6FD54A4F37F222D6 /* SpatialDashboardView.swift */; };
 		35919C3F765F6067FF20DB5B /* InputRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF5800AFD672F84C1E1D1DB /* InputRouterTests.swift */; };
+		3604CEC831615223130A78F0 /* HandTrackingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D16600B2DEA4A4E1536F91 /* HandTrackingModels.swift */; };
 		367511FF8C0D1A7BB488DDF5 /* WatchControlProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9087E7E2860481F5EBAC380 /* WatchControlProtocol.swift */; };
 		393F747C4F04E2757E3C8CA0 /* StudioProjectAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1DBFAD4B5EA30ACDC51E67 /* StudioProjectAccess.swift */; };
 		3B0D40F65657961B9AD0D0BD /* DirectCaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319A36D2B71B3D61FDAF4F7A /* DirectCaptureCoordinator.swift */; };
 		3B769C205B2E170ACA65A60B /* SpatialCanvasViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAABCCCCA9B79B77FCF9EF01 /* SpatialCanvasViewController.swift */; };
+		3CC0B6A30BE80E0D59B2E54B /* YouTubeDownloadStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0F662FF7507496C24D72EA /* YouTubeDownloadStore.swift */; };
 		3D2524A8C98609C1DE5725E5 /* WindowProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD4ED33EC147E034206A8BF9 /* WindowProjectionTests.swift */; };
+		3DDF1F03DD0C9ADAA63C142A /* HandTrackingPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FC1E3CDDB93A86CBC02406 /* HandTrackingPreview.swift */; };
 		4243B3F10D2A0E97A4F6768D /* WakeWordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1411235E07A90217782712EC /* WakeWordTests.swift */; };
 		49129BD08A6842B2FF1A008B /* FrameStreamingServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481CD2EFFC97A0D7ECA61B79 /* FrameStreamingServer.swift */; };
 		4AB94BABC1BEADF3EA88A028 /* PWAStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF7D5D2F65B77025A137836 /* PWAStore.swift */; };
@@ -51,6 +67,8 @@
 		4BAC578B52D3026934FD16F0 /* ControllerRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB36D7E3C93CB3061CE1788F /* ControllerRootView.swift */; };
 		4D26E5679CDD0A1BC7DA060F /* NativeVoiceIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BAB7C806C1C2CB2EB220868 /* NativeVoiceIO.swift */; };
 		4DEAE091D2F3423E62EDE62A /* MediaSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE7DB137B36CCDC20E9ED72 /* MediaSurface.swift */; };
+		4E8A7A709F5E5A520660D57C /* HandGestureInterpreter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF53084FABF56A8BA0210AF /* HandGestureInterpreter.swift */; };
+		51958B5C173B34B5E5B94C68 /* LiveTranslationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C466C5B4944941F78B5FA41 /* LiveTranslationController.swift */; };
 		5320B5D8F87A0101D3A255C0 /* WatchControlModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774AE5808950F081F0481AC5 /* WatchControlModel.swift */; };
 		5331C4E11FEF5EFB456AD793 /* RoyalVNCKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B107E37E22F3904EB70F9DF /* RoyalVNCKit */; };
 		5375DAADE65903A703CFC4B9 /* DirectMetalSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0BAEE38C1C2D2F063E50C15 /* DirectMetalSurfaceView.swift */; };
@@ -59,9 +77,12 @@
 		56C6D877AAFD4960E379360B /* WindowControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA20EDAFDEC447B21464E41 /* WindowControls.swift */; };
 		56E35198D78A34599B36BCDF /* RoyalVNCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD8ED399FC9C6B081EAFB799 /* RoyalVNCSession.swift */; };
 		58C96F4DC4F31C6A9383DFCC /* GlassesViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3FE24D07C764919AD1D2C16 /* GlassesViewport.swift */; };
+		59EED94CDCF54393B74DF072 /* HandTrackingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA7DE16350DEA7B6C834DFC /* HandTrackingController.swift */; };
 		5ACBEF2A9C0A7ADC6DDD2850 /* DirectModeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933B519054BFB9470BAD04B8 /* DirectModeStore.swift */; };
+		5C44C5B259DF63B5A2553645 /* ExtendRealityFocusProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D030437CFBF5F0CFE8D4F3 /* ExtendRealityFocusProfile.swift */; };
 		5D71C191B00FF3DD5EFAEF2E /* HeadPoseCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4759416CAB6420A19FE44AE3 /* HeadPoseCore.swift */; };
 		615916EF99D066603AC3A096 /* WindowProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F618ED103B6A7012A1356F5 /* WindowProjection.swift */; };
+		64F440661259569BC0894132 /* DeviceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 993207D19E47172402C7ED38 /* DeviceWorkspaceView.swift */; };
 		67377302F4EFF49F8F6DB1DA /* YouTubeAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0140D654BCFCDADF26FC8765 /* YouTubeAPIClient.swift */; };
 		68ACC4A61BC5F2E69D460977 /* DashboardEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 783E9D456F31492749858A8E /* DashboardEditorView.swift */; };
 		6934AACBA9DECD2D4DAF2ED2 /* StreamProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54AA47EF6116049C55EE02BA /* StreamProfile.swift */; };
@@ -82,6 +103,8 @@
 		7C4DF745410A63D0D7345A61 /* StudioWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300F285B35C4F29FBE7C2650 /* StudioWebView.swift */; };
 		8067B0F100265BD9655D6FF5 /* SessionAudioProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3EC9A2BF1B4F356C39602E /* SessionAudioProtocol.swift */; };
 		806A1D543EFC60D17CC81F7C /* WindowProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F618ED103B6A7012A1356F5 /* WindowProjection.swift */; };
+		81418A0F67D2C90193DE02A8 /* YouTubeAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C7C9CDCBA27371935C30CDA /* YouTubeAuthSession.swift */; };
+		81650F809F5C8541EDCD8763 /* SpeechAuthorizationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF639D5EFB5C59229C4DAF5 /* SpeechAuthorizationBridge.swift */; };
 		85B007EADA986F3382A66EC4 /* WorkspacePersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A5251D33241EF287E8685B /* WorkspacePersistence.swift */; };
 		85E1BCC207457CF2030DFA03 /* WatchControlProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C70E71BEE2FF902CDDF23B /* WatchControlProtocolTests.swift */; };
 		862FCB1C5B1B81FF6946975B /* MacStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FA9408C1BBD34FA10A69B3 /* MacStreamClient.swift */; };
@@ -89,16 +112,21 @@
 		8A9B296706B62DAFE9F952B1 /* DirectModeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF33B60B838C921BAA416096 /* DirectModeViews.swift */; };
 		8C7FF3C47F877EF245314331 /* ExtendRealityMapsShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9B37EF465E05F48776919AB2 /* ExtendRealityMapsShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8F2D96B23625E14C994AC80B /* SystemDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C86F2F3415C531F4F99C4D /* SystemDataStore.swift */; };
+		8F54E1945E19279BF24112CC /* VisionHandPoseDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 851A08F7C62A373ADDC3C3F7 /* VisionHandPoseDetector.swift */; };
 		9007E0A35B72E2E83C9398C7 /* PWAStoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7605A5DD5A2D3C1D09CC15 /* PWAStoreView.swift */; };
+		92FF6B41451B09164DDAF113 /* HandGestureInterpreter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF53084FABF56A8BA0210AF /* HandGestureInterpreter.swift */; };
 		937F899204F9699AE84A7503 /* BrowserWindowSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64712A3C6EEC601F287849E4 /* BrowserWindowSession.swift */; };
 		939B1F295BBF4BF42F258A9D /* ScreenCaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA607D5899FBB85B0C0850CA /* ScreenCaptureCoordinator.swift */; };
 		966D325C43317BBEB3D91EE2 /* DirectSpatialModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE7E2F0574617CD5651A1BE /* DirectSpatialModeTests.swift */; };
+		9FF3B7276E2A6D905A767E94 /* ExtendRealityFocusIntents.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BB0115C3E1698BDAF050D9C3 /* ExtendRealityFocusIntents.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A1E5F8BD9DC82D1475920EFF /* DirectDisplayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16865F2B2D85C7E03640644 /* DirectDisplayWindowController.swift */; };
 		A24FA029DD440A64E805A0CB /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC8F54A7886AFE0CB0CC2C2 /* KeychainStore.swift */; };
 		A3199E289E725A2759A0B94A /* AssistantContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDE59E90D606104E1B962AC /* AssistantContextProvider.swift */; };
 		A3B5571B6E553DC7285372BA /* StudioModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CF88677E0D6B7C06EFF06C /* StudioModelsTests.swift */; };
 		A78471BBF36834FDB2DF8194 /* StudioModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8160749A5C4E02DAFC15C6 /* StudioModels.swift */; };
 		A8B2FE89A723EA42111E4C02 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CCAC530DCA56CDACA236B92 /* AppEnvironment.swift */; };
+		A9EFD17C4EA83E5A040E221B /* LiveTranslationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B0484E2D173C5D932828BA /* LiveTranslationSettingsView.swift */; };
+		AAFD3560199FD237275BAA19 /* HandTrackingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA7DE16350DEA7B6C834DFC /* HandTrackingController.swift */; };
 		AF0BA6502B24C9808326E874 /* DepthAnythingV2SmallF16.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 9CA957D6168DF57EE9B5AE3E /* DepthAnythingV2SmallF16.mlpackage */; };
 		AF44819C7396D63DF3CB0BC5 /* MapsSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854DA5398424676210561997 /* MapsSurface.swift */; };
 		B16969A6B58481C256004928 /* ExtendRealityWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D281519E0117FF8EEE9C0E98 /* ExtendRealityWatchApp.swift */; };
@@ -106,18 +134,23 @@
 		B436B010C0FDCFCF47A27EEB /* YouTubeVideoIDParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22463C62D2942613AF0DB254 /* YouTubeVideoIDParserTests.swift */; };
 		B4DF38B87713A84FB99F862B /* MacHeadPoseProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0029B41A905828EA25E201C8 /* MacHeadPoseProviders.swift */; };
 		BCDF5F99FC8AB7356D38915A /* WatchControlProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9087E7E2860481F5EBAC380 /* WatchControlProtocol.swift */; };
+		BE82C37FC6615145AD5D46D7 /* XREALPrivateHIDPoseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B37241430205D0E5C7D3F6D5 /* XREALPrivateHIDPoseProvider.swift */; };
 		C0216C01E17C4FC9836E41BC /* XREALUSBPoseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BBA400376B50BAAD573B963 /* XREALUSBPoseProvider.swift */; };
 		C03AF6D9F405E801EAF0ECDD /* TabbedBrowserSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF50E79D8C034CAA00BC568F /* TabbedBrowserSurfaceView.swift */; };
 		C18F6D01470B924C7DF1B4EE /* MicrophoneAudioHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = F165DAAA89C2251D4AB698E7 /* MicrophoneAudioHub.swift */; };
 		C3BF0192352DE2866C7A5639 /* HeadPoseCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4759416CAB6420A19FE44AE3 /* HeadPoseCore.swift */; };
 		C4E856F244612F4839B915AE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0930B9980C98854AC55AF46 /* ContentView.swift */; };
 		C6327C57DA8245D4AA07B4F9 /* ExtendRealityPWAStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E524D808047D737FE60FFA /* ExtendRealityPWAStudioApp.swift */; };
+		C6D856B048326BC7053B0F68 /* ExtendRealityFocusProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D030437CFBF5F0CFE8D4F3 /* ExtendRealityFocusProfile.swift */; };
+		C728331440EC8EF2883BD5D3 /* HandTrackingPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FC1E3CDDB93A86CBC02406 /* HandTrackingPreview.swift */; };
+		CF440B97BA278BA951E58BEA /* DashboardTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E758C485AAF297A63446B6 /* DashboardTypes.swift */; };
 		D246D60C1BB22EE8DC46725A /* HeadPoseSmootherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF21E9838306948F45D0767 /* HeadPoseSmootherTests.swift */; };
 		D37F3C53ACFED4354499C21E /* SloppyVoiceTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F563AE31586191244ED1203 /* SloppyVoiceTransport.swift */; };
 		D65D2101A8A85F1381898BA9 /* RoyalVNCKit in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 5B107E37E22F3904EB70F9DF /* RoyalVNCKit */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D76949CE43511ACBFD8A433D /* DashboardStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40E1CB401D72C771F2CA844C /* DashboardStoreTests.swift */; };
 		D7D7591FE69D722E5D98211C /* StudioSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76A168815C3A0474F70C3FA9 /* StudioSidebarView.swift */; };
 		D7F56F12F16776528CFFC23E /* ExtendRealityMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18DECE255042EB7F151F14A /* ExtendRealityMacApp.swift */; };
+		DADDE671E7E08DDD47FD0A3B /* XREALPrivateHIDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316317DB0EC45681DE7B8461 /* XREALPrivateHIDTests.swift */; };
 		DC950F1F0A57B4AC4A2F24DE /* PWAApps in Resources */ = {isa = PBXBuildFile; fileRef = 0B6BAEB150185BECF51705AC /* PWAApps */; };
 		DD70BEFC4E85266F3DFE684E /* RemoteDisplayLayoutSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD9B3AF2189D52751BD2B1AC /* RemoteDisplayLayoutSettingsView.swift */; };
 		DEFF6ACF718F95C0B3BB0BFC /* WorkspacePersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A5251D33241EF287E8685B /* WorkspacePersistence.swift */; };
@@ -138,9 +171,11 @@
 		F2F535C18ABF21F4F2AD5DBA /* RemoteDesktopSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BD8787A7EEB05C376C1EF2 /* RemoteDesktopSession.swift */; };
 		F39AD2DF92278536BEFF5332 /* YouTubeSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575E47C6DB002A51067C617A /* YouTubeSurface.swift */; };
 		F42372F8023F1B7A45834F6C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C53B64EB09144951C3BD71 /* AppDelegate.swift */; };
+		F455ADBAEC9D51BEB6023FAA /* ExtendRealityFocusProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 818FA590A5D48E47137113FC /* ExtendRealityFocusProfileTests.swift */; };
 		F628ED76E2FF3BA8E14DD314 /* HeadPoseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCCE580DD2D24677522CACB9 /* HeadPoseProvider.swift */; };
 		F63092C91B5019AEB5A39D99 /* SpatialCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BACE4F567BB27C361F940872 /* SpatialCanvasView.swift */; };
 		F685B641495092D512B91FF5 /* SloppyVoiceModeIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D72B80E65193B76C579F0A93 /* SloppyVoiceModeIntent.swift */; };
+		F6B15F7DD6A373DEAD6E4EB4 /* YouTubeAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ABDC24AEF3248709D6E08CE /* YouTubeAPIClientTests.swift */; };
 		F6C163DA94A93E4D0ECD60F8 /* BundledSparkFox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096272A54DF20C98D20F1FB5 /* BundledSparkFox.swift */; };
 		F7205FC79B310C53069BE2C2 /* StereoDepthPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45D6990A015BE7F966664E6D /* StereoDepthPipelineTests.swift */; };
 		FA4E9687C778309CC9485EA9 /* WorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50567D987FA43D409D341DD4 /* WorkspaceStore.swift */; };
@@ -167,6 +202,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 6DB54497AA5414FD8A90ECBC;
 			remoteInfo = ExtendReality;
+		};
+		79A43F4007A74A75CD342589 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2C4B4D01164960B394039537 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0E98CB944F86619D85BC6790;
+			remoteInfo = ExtendRealityFocusIntents;
 		};
 		8CDE80B89BF8DFA31F2F929E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -232,6 +274,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				8C7FF3C47F877EF245314331 /* ExtendRealityMapsShare.appex in Embed Foundation Extensions */,
+				9FF3B7276E2A6D905A767E94 /* ExtendRealityFocusIntents.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -247,6 +290,7 @@
 		0B6BAEB150185BECF51705AC /* PWAApps */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PWAApps; path = ExtendRealityPWAStudio/Resources/PWAApps; sourceTree = SOURCE_ROOT; };
 		0C0ACCFDA16B88CBD9B4BD15 /* WatchControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchControlView.swift; sourceTree = "<group>"; };
 		0CE7DB137B36CCDC20E9ED72 /* MediaSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSurface.swift; sourceTree = "<group>"; };
+		0DF53084FABF56A8BA0210AF /* HandGestureInterpreter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandGestureInterpreter.swift; sourceTree = "<group>"; };
 		0E8EB6BA4B73A1B9709364A7 /* DashboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardStore.swift; sourceTree = "<group>"; };
 		13CC894AEC6A2B432ABFC5AF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1411235E07A90217782712EC /* WakeWordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWordTests.swift; sourceTree = "<group>"; };
@@ -254,20 +298,25 @@
 		15A5BF594A5A9EE97BCAF182 /* SloppyVoiceTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SloppyVoiceTransportTests.swift; sourceTree = "<group>"; };
 		18941A8066F078ECBBB98634 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		19F92200C5C742EDE41773F8 /* ExtendRealityMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExtendRealityMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1C9343C6B1B4FD164F7C6CAF /* YouTubeDownloadStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeDownloadStoreTests.swift; sourceTree = "<group>"; };
 		1D1FF912A706256979F6AF3C /* GeneratedStereoShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GeneratedStereoShaders.metal; sourceTree = "<group>"; };
 		22463C62D2942613AF0DB254 /* YouTubeVideoIDParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeVideoIDParserTests.swift; sourceTree = "<group>"; };
+		23A402F59D9A21B12324DE50 /* ExtendRealityFocusFilterIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityFocusFilterIntent.swift; sourceTree = "<group>"; };
 		23DF5255C62E91ADF2EE74F5 /* VoiceAssistantModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAssistantModels.swift; sourceTree = "<group>"; };
 		271AF8BF0464E81A50F3C9A7 /* ExtendRealityPWAStudio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExtendRealityPWAStudio.entitlements; sourceTree = "<group>"; };
 		27CFDD9030A9DD173675C3F8 /* SessionAudioPCMEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudioPCMEncoder.swift; sourceTree = "<group>"; };
 		2A1FD9D4685AE5DBD7F1F22D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		2A2AB0E04CC9BA1A806EAF4A /* MacSessionAudioController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSessionAudioController.swift; sourceTree = "<group>"; };
 		2A7828AE0CD9C2C6A24BC568 /* StereoDepthPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StereoDepthPipeline.swift; sourceTree = "<group>"; };
+		2ABDC24AEF3248709D6E08CE /* YouTubeAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeAPIClientTests.swift; sourceTree = "<group>"; };
 		2CDC62E945A57B1128BB4B0A /* MacStreamProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamProtocol.swift; sourceTree = "<group>"; };
 		300F285B35C4F29FBE7C2650 /* StudioWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioWebView.swift; sourceTree = "<group>"; };
 		30314D148679356E0B2B5689 /* ExtendReality.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExtendReality.entitlements; sourceTree = "<group>"; };
+		316317DB0EC45681DE7B8461 /* XREALPrivateHIDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XREALPrivateHIDTests.swift; sourceTree = "<group>"; };
 		3164A40F159838EDDD6CA1BC /* VoiceAssistantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAssistantTests.swift; sourceTree = "<group>"; };
 		319A36D2B71B3D61FDAF4F7A /* DirectCaptureCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectCaptureCoordinator.swift; sourceTree = "<group>"; };
 		31DCB83FBD08380C9A386483 /* SourceSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSidebarView.swift; sourceTree = "<group>"; };
+		31FC1E3CDDB93A86CBC02406 /* HandTrackingPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandTrackingPreview.swift; sourceTree = "<group>"; };
 		3255FAF46CA1102DA71A0F9B /* RemoteMicrophoneMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMicrophoneMonitor.swift; sourceTree = "<group>"; };
 		346DD6AB3CD30D5AF46D464D /* RemoteDisplayLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDisplayLayout.swift; sourceTree = "<group>"; };
 		37944EB38BFFCC891D16CCCE /* PWAApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PWAApp.swift; sourceTree = "<group>"; };
@@ -275,8 +324,12 @@
 		3BBA400376B50BAAD573B963 /* XREALUSBPoseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XREALUSBPoseProvider.swift; sourceTree = "<group>"; };
 		3C8160749A5C4E02DAFC15C6 /* StudioModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioModels.swift; sourceTree = "<group>"; };
 		3CAAC6AE8D283D6662CEDDC6 /* WatchRemoteController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRemoteController.swift; sourceTree = "<group>"; };
+		3CF639D5EFB5C59229C4DAF5 /* SpeechAuthorizationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechAuthorizationBridge.swift; sourceTree = "<group>"; };
+		3E0F662FF7507496C24D72EA /* YouTubeDownloadStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeDownloadStore.swift; sourceTree = "<group>"; };
+		40B0484E2D173C5D932828BA /* LiveTranslationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationSettingsView.swift; sourceTree = "<group>"; };
 		40E1CB401D72C771F2CA844C /* DashboardStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardStoreTests.swift; sourceTree = "<group>"; };
 		41A062332230627CDCAC99B6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		41B3AE5440A9E0C8CA11AA9D /* HandGestureInterpreterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandGestureInterpreterTests.swift; sourceTree = "<group>"; };
 		45D6990A015BE7F966664E6D /* StereoDepthPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StereoDepthPipelineTests.swift; sourceTree = "<group>"; };
 		4759416CAB6420A19FE44AE3 /* HeadPoseCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadPoseCore.swift; sourceTree = "<group>"; };
 		481CD2EFFC97A0D7ECA61B79 /* FrameStreamingServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStreamingServer.swift; sourceTree = "<group>"; };
@@ -295,28 +348,39 @@
 		5F563AE31586191244ED1203 /* SloppyVoiceTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SloppyVoiceTransport.swift; sourceTree = "<group>"; };
 		64712A3C6EEC601F287849E4 /* BrowserWindowSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowSession.swift; sourceTree = "<group>"; };
 		68948E906E2F9C5B34B50ECB /* HardwareMouseInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareMouseInput.swift; sourceTree = "<group>"; };
+		6C30442D1B6F7AEA28CFE3D1 /* SpeechAuthorizationBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechAuthorizationBridgeTests.swift; sourceTree = "<group>"; };
 		6CCAC530DCA56CDACA236B92 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		6EDE59E90D606104E1B962AC /* AssistantContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantContextProvider.swift; sourceTree = "<group>"; };
+		71E2D1E3DC85547FC563E67D /* ExtendRealityFocusIntents.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExtendRealityFocusIntents.entitlements; sourceTree = "<group>"; };
 		74134FD7B43FAC434B3A6C19 /* RemoteDisplayLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDisplayLayoutTests.swift; sourceTree = "<group>"; };
 		76A168815C3A0474F70C3FA9 /* StudioSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioSidebarView.swift; sourceTree = "<group>"; };
 		774AE5808950F081F0481AC5 /* WatchControlModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchControlModel.swift; sourceTree = "<group>"; };
 		783E9D456F31492749858A8E /* DashboardEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardEditorView.swift; sourceTree = "<group>"; };
+		787E8630B44C79F651C9E04B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		79D030437CFBF5F0CFE8D4F3 /* ExtendRealityFocusProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityFocusProfile.swift; sourceTree = "<group>"; };
 		79EC8480F5EE2582E210D604 /* GeneratedStereoRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedStereoRenderer.swift; sourceTree = "<group>"; };
 		7BA3FDE73EB2C8A427912728 /* DepthAnythingV2SmallF16-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "DepthAnythingV2SmallF16-LICENSE.txt"; sourceTree = "<group>"; };
+		818FA590A5D48E47137113FC /* ExtendRealityFocusProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityFocusProfileTests.swift; sourceTree = "<group>"; };
+		851A08F7C62A373ADDC3C3F7 /* VisionHandPoseDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionHandPoseDetector.swift; sourceTree = "<group>"; };
 		8532B9D63576C841AB961405 /* WakeWordController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWordController.swift; sourceTree = "<group>"; };
 		854DA5398424676210561997 /* MapsSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapsSurface.swift; sourceTree = "<group>"; };
 		860A88C1568CF0A26847BA88 /* StudioAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAppModel.swift; sourceTree = "<group>"; };
 		8951092874DCF064E64B008F /* StudioWebSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioWebSession.swift; sourceTree = "<group>"; };
+		8BA7DE16350DEA7B6C834DFC /* HandTrackingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandTrackingController.swift; sourceTree = "<group>"; };
+		8C7C9CDCBA27371935C30CDA /* YouTubeAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeAuthSession.swift; sourceTree = "<group>"; };
 		90C2E2D6AD1BF2ECE6FC7453 /* MacStreamProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamProtocolTests.swift; sourceTree = "<group>"; };
 		917EC77AD116A1D0935E2714 /* SpatialPointerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialPointerController.swift; sourceTree = "<group>"; };
 		933B519054BFB9470BAD04B8 /* DirectModeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectModeStore.swift; sourceTree = "<group>"; };
+		94E758C485AAF297A63446B6 /* DashboardTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardTypes.swift; sourceTree = "<group>"; };
 		9893182B0B9F40C3FBAFD73F /* ExtendReality.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ExtendReality.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		993207D19E47172402C7ED38 /* DeviceWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceWorkspaceView.swift; sourceTree = "<group>"; };
 		99A5251D33241EF287E8685B /* WorkspacePersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePersistence.swift; sourceTree = "<group>"; };
 		99A7AA4705F1DB1E95003451 /* MapsRouteLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapsRouteLinkTests.swift; sourceTree = "<group>"; };
 		99C53B64EB09144951C3BD71 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		99FA9408C1BBD34FA10A69B3 /* MacStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamClient.swift; sourceTree = "<group>"; };
 		9A5CBAC00A55775297BE5E7C /* RuntimeInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeInspectorView.swift; sourceTree = "<group>"; };
 		9B37EF465E05F48776919AB2 /* ExtendRealityMapsShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ExtendRealityMapsShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C466C5B4944941F78B5FA41 /* LiveTranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationController.swift; sourceTree = "<group>"; };
 		9CA957D6168DF57EE9B5AE3E /* DepthAnythingV2SmallF16.mlpackage */ = {isa = PBXFileReference; path = DepthAnythingV2SmallF16.mlpackage; sourceTree = "<group>"; };
 		9D90630EBA3FF832EFA75C05 /* WorkspaceLayoutProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceLayoutProjection.swift; sourceTree = "<group>"; };
 		9DE7E2F0574617CD5651A1BE /* DirectSpatialModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectSpatialModeTests.swift; sourceTree = "<group>"; };
@@ -336,22 +400,28 @@
 		B123A62095270D0537975CB7 /* SurfaceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceRegistry.swift; sourceTree = "<group>"; };
 		B27C4849B280F8DFF8E93414 /* BrowserWindowSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowSessionTests.swift; sourceTree = "<group>"; };
 		B2E5D98588DC1E3364D37C24 /* InputRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputRouter.swift; sourceTree = "<group>"; };
+		B37241430205D0E5C7D3F6D5 /* XREALPrivateHIDPoseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XREALPrivateHIDPoseProvider.swift; sourceTree = "<group>"; };
 		B3DACE4DA302FD097E8B14C4 /* ExtendRealityWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ExtendRealityWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B45C83925701336BA6A5679E /* ExtendRealityTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ExtendRealityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BACE4F567BB27C361F940872 /* SpatialCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialCanvasView.swift; sourceTree = "<group>"; };
+		BB0115C3E1698BDAF050D9C3 /* ExtendRealityFocusIntents.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ExtendRealityFocusIntents.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF50E79D8C034CAA00BC568F /* TabbedBrowserSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabbedBrowserSurfaceView.swift; sourceTree = "<group>"; };
 		C0930B9980C98854AC55AF46 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		C24C8F78515AE64007237C8D /* VoiceAssistantCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAssistantCoordinator.swift; sourceTree = "<group>"; };
+		C736FDE4BBD232356D7B7B5E /* IOSHandControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSHandControlView.swift; sourceTree = "<group>"; };
 		CC7D9FE714039FC1B8ADB7EC /* ExtendRealityControlWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityControlWidget.swift; sourceTree = "<group>"; };
 		CDB088C15B87D0B8D84B5580 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CF80C3415E2491E3E91B3D34 /* MacStreamingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStreamingStore.swift; sourceTree = "<group>"; };
 		D16865F2B2D85C7E03640644 /* DirectDisplayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDisplayWindowController.swift; sourceTree = "<group>"; };
+		D19629E2AFFCA9084D35B44A /* LiveTranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationControllerTests.swift; sourceTree = "<group>"; };
 		D281519E0117FF8EEE9C0E98 /* ExtendRealityWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityWatchApp.swift; sourceTree = "<group>"; };
+		D2D16600B2DEA4A4E1536F91 /* HandTrackingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandTrackingModels.swift; sourceTree = "<group>"; };
 		D2E524D808047D737FE60FFA /* ExtendRealityPWAStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtendRealityPWAStudioApp.swift; sourceTree = "<group>"; };
 		D4591C0C6953B6C31A31D767 /* ExtendRealityPWAStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ExtendRealityPWAStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D72B80E65193B76C579F0A93 /* SloppyVoiceModeIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SloppyVoiceModeIntent.swift; sourceTree = "<group>"; };
 		D8CF8825DA70014A28F64C2D /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		DCCE580DD2D24677522CACB9 /* HeadPoseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadPoseProvider.swift; sourceTree = "<group>"; };
+		DD2E047AC0C6ABDED86A1D62 /* DeviceWorkspacePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceWorkspacePresentationTests.swift; sourceTree = "<group>"; };
 		DD8ED399FC9C6B081EAFB799 /* RoyalVNCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoyalVNCSession.swift; sourceTree = "<group>"; };
 		DD9B3AF2189D52751BD2B1AC /* RemoteDisplayLayoutSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDisplayLayoutSettingsView.swift; sourceTree = "<group>"; };
 		DF33B60B838C921BAA416096 /* DirectModeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectModeViews.swift; sourceTree = "<group>"; };
@@ -359,6 +429,7 @@
 		E2DF3FF815C681FF525A620D /* MacSourcePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSourcePickerView.swift; sourceTree = "<group>"; };
 		E62E6A308EA917491E2A3051 /* RemoteStreamProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteStreamProtocolTests.swift; sourceTree = "<group>"; };
 		E6308A62F677FD5838B3A319 /* DebugSocketStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSocketStreamer.swift; sourceTree = "<group>"; };
+		E86E884F58FB13492A8F40F4 /* DebugWorldTrackingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugWorldTrackingPolicyTests.swift; sourceTree = "<group>"; };
 		EA25533E7C9C3B33D1AC7C43 /* RemoteDesktopSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDesktopSurface.swift; sourceTree = "<group>"; };
 		EA607D5899FBB85B0C0850CA /* ScreenCaptureCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureCoordinator.swift; sourceTree = "<group>"; };
 		EAABCCCCA9B79B77FCF9EF01 /* SpatialCanvasViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialCanvasViewController.swift; sourceTree = "<group>"; };
@@ -382,6 +453,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5331C4E11FEF5EFB456AD793 /* RoyalVNCKit in Frameworks */,
+				2B0CC9B5B233BCAC45B21763 /* YouTubeKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -408,6 +480,7 @@
 				5BAB7C806C1C2CB2EB220868 /* NativeVoiceIO.swift */,
 				D72B80E65193B76C579F0A93 /* SloppyVoiceModeIntent.swift */,
 				5F563AE31586191244ED1203 /* SloppyVoiceTransport.swift */,
+				3CF639D5EFB5C59229C4DAF5 /* SpeechAuthorizationBridge.swift */,
 				C24C8F78515AE64007237C8D /* VoiceAssistantCoordinator.swift */,
 				23DF5255C62E91ADF2EE74F5 /* VoiceAssistantModels.swift */,
 				8532B9D63576C841AB961405 /* WakeWordController.swift */,
@@ -443,6 +516,7 @@
 			isa = PBXGroup;
 			children = (
 				DCCE580DD2D24677522CACB9 /* HeadPoseProvider.swift */,
+				B37241430205D0E5C7D3F6D5 /* XREALPrivateHIDPoseProvider.swift */,
 			);
 			path = Tracking;
 			sourceTree = "<group>";
@@ -564,6 +638,7 @@
 			isa = PBXGroup;
 			children = (
 				AB36D7E3C93CB3061CE1788F /* ControllerRootView.swift */,
+				993207D19E47172402C7ED38 /* DeviceWorkspaceView.swift */,
 				E2DF3FF815C681FF525A620D /* MacSourcePickerView.swift */,
 				DD9B3AF2189D52751BD2B1AC /* RemoteDisplayLayoutSettingsView.swift */,
 				4A6CE6E2986B6A7F643C9124 /* TrackpadView.swift */,
@@ -581,6 +656,19 @@
 				9F618ED103B6A7012A1356F5 /* WindowProjection.swift */,
 			);
 			path = ExternalDisplay;
+			sourceTree = "<group>";
+		};
+		6F0C803FD407E8CF40CAC849 /* HandTracking */ = {
+			isa = PBXGroup;
+			children = (
+				0DF53084FABF56A8BA0210AF /* HandGestureInterpreter.swift */,
+				8BA7DE16350DEA7B6C834DFC /* HandTrackingController.swift */,
+				D2D16600B2DEA4A4E1536F91 /* HandTrackingModels.swift */,
+				31FC1E3CDDB93A86CBC02406 /* HandTrackingPreview.swift */,
+				C736FDE4BBD232356D7B7B5E /* IOSHandControlView.swift */,
+				851A08F7C62A373ADDC3C3F7 /* VisionHandPoseDetector.swift */,
+			);
+			path = HandTracking;
 			sourceTree = "<group>";
 		};
 		7FF7C9D311BC67C60C02ADE1 /* Debug */ = {
@@ -658,6 +746,15 @@
 			path = Web;
 			sourceTree = "<group>";
 		};
+		9CD025D7AF6CFFF3063D8112 /* ExtendRealityFocusIntents */ = {
+			isa = PBXGroup;
+			children = (
+				23A402F59D9A21B12324DE50 /* ExtendRealityFocusFilterIntent.swift */,
+				F29A37655BD048D74529A0E0 /* Resources */,
+			);
+			path = ExtendRealityFocusIntents;
+			sourceTree = "<group>";
+		};
 		A56EC1845BCD06D537DA99AB /* ExtendRealityMapsShare */ = {
 			isa = PBXGroup;
 			children = (
@@ -711,11 +808,20 @@
 			path = SystemData;
 			sourceTree = "<group>";
 		};
+		B9F2DBFA45E3F4B4BF67DE2B /* Focus */ = {
+			isa = PBXGroup;
+			children = (
+				79D030437CFBF5F0CFE8D4F3 /* ExtendRealityFocusProfile.swift */,
+			);
+			path = Focus;
+			sourceTree = "<group>";
+		};
 		BC914F63373B72DC229B829B /* Dashboard */ = {
 			isa = PBXGroup;
 			children = (
 				783E9D456F31492749858A8E /* DashboardEditorView.swift */,
 				0E8EB6BA4B73A1B9709364A7 /* DashboardStore.swift */,
+				94E758C485AAF297A63446B6 /* DashboardTypes.swift */,
 				4F4F0E1F6FD54A4F37F222D6 /* SpatialDashboardView.swift */,
 			);
 			path = Dashboard;
@@ -733,6 +839,7 @@
 			isa = PBXGroup;
 			children = (
 				D41D74DFAB1AAD015D03F170 /* ExtendReality */,
+				9CD025D7AF6CFFF3063D8112 /* ExtendRealityFocusIntents */,
 				2B4ABDE94897064E2E949ADB /* ExtendRealityMac */,
 				8B1A964A4FB127879239F486 /* ExtendRealityMacTests */,
 				A56EC1845BCD06D537DA99AB /* ExtendRealityMapsShare */,
@@ -793,6 +900,8 @@
 				7FF7C9D311BC67C60C02ADE1 /* Debug */,
 				2B334ED5DF08DF4E8B32F129 /* Domain */,
 				68A7A6E7C871949E4E6405D7 /* ExternalDisplay */,
+				B9F2DBFA45E3F4B4BF67DE2B /* Focus */,
+				6F0C803FD407E8CF40CAC849 /* HandTracking */,
 				66BD3BBB987CADEC8187EBA8 /* Input */,
 				E15933E2662E993446BF44EA /* Persistence */,
 				84F96CECB9950CC41EAC36E7 /* PWA */,
@@ -802,6 +911,7 @@
 				B2C44B5A47B0935229634EA6 /* Surfaces */,
 				B37BB62CAB1BABA55BF8474B /* SystemData */,
 				2340C47D436C694AF81F3239 /* Tracking */,
+				F407EEF1F12ED4318CC0C490 /* Translation */,
 				079B151FBDE860487C98D1A8 /* Voice */,
 				C18C43E309A6D6C93DE70529 /* Watch */,
 				B35496D778A6F125668E1964 /* Workspace */,
@@ -813,6 +923,7 @@
 			isa = PBXGroup;
 			children = (
 				9893182B0B9F40C3FBAFD73F /* ExtendReality.app */,
+				BB0115C3E1698BDAF050D9C3 /* ExtendRealityFocusIntents.appex */,
 				19F92200C5C742EDE41773F8 /* ExtendRealityMac.app */,
 				ADD56AE788FA5822B2D731D2 /* ExtendRealityMacTests.xctest */,
 				9B37EF465E05F48776919AB2 /* ExtendRealityMapsShare.appex */,
@@ -846,6 +957,8 @@
 			children = (
 				EEC8F54A7886AFE0CB0CC2C2 /* KeychainStore.swift */,
 				0140D654BCFCDADF26FC8765 /* YouTubeAPIClient.swift */,
+				8C7C9CDCBA27371935C30CDA /* YouTubeAuthSession.swift */,
+				3E0F662FF7507496C24D72EA /* YouTubeDownloadStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -874,6 +987,24 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		F29A37655BD048D74529A0E0 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				71E2D1E3DC85547FC563E67D /* ExtendRealityFocusIntents.entitlements */,
+				787E8630B44C79F651C9E04B /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F407EEF1F12ED4318CC0C490 /* Translation */ = {
+			isa = PBXGroup;
+			children = (
+				9C466C5B4944941F78B5FA41 /* LiveTranslationController.swift */,
+				40B0484E2D173C5D932828BA /* LiveTranslationSettingsView.swift */,
+			);
+			path = Translation;
+			sourceTree = "<group>";
+		};
 		F4A3A51EBB6420948BB3A7C9 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -895,19 +1026,28 @@
 			children = (
 				B27C4849B280F8DFF8E93414 /* BrowserWindowSessionTests.swift */,
 				40E1CB401D72C771F2CA844C /* DashboardStoreTests.swift */,
+				E86E884F58FB13492A8F40F4 /* DebugWorldTrackingPolicyTests.swift */,
+				DD2E047AC0C6ABDED86A1D62 /* DeviceWorkspacePresentationTests.swift */,
+				818FA590A5D48E47137113FC /* ExtendRealityFocusProfileTests.swift */,
+				41B3AE5440A9E0C8CA11AA9D /* HandGestureInterpreterTests.swift */,
 				4DF21E9838306948F45D0767 /* HeadPoseSmootherTests.swift */,
 				4CF5800AFD672F84C1E1D1DB /* InputRouterTests.swift */,
+				D19629E2AFFCA9084D35B44A /* LiveTranslationControllerTests.swift */,
 				90C2E2D6AD1BF2ECE6FC7453 /* MacStreamProtocolTests.swift */,
 				99A7AA4705F1DB1E95003451 /* MapsRouteLinkTests.swift */,
 				05CE0961243CE4779B4EAB3D /* PWAStoreTests.swift */,
 				74134FD7B43FAC434B3A6C19 /* RemoteDisplayLayoutTests.swift */,
 				15A5BF594A5A9EE97BCAF182 /* SloppyVoiceTransportTests.swift */,
+				6C30442D1B6F7AEA28CFE3D1 /* SpeechAuthorizationBridgeTests.swift */,
 				45D6990A015BE7F966664E6D /* StereoDepthPipelineTests.swift */,
 				3164A40F159838EDDD6CA1BC /* VoiceAssistantTests.swift */,
 				1411235E07A90217782712EC /* WakeWordTests.swift */,
 				A0C70E71BEE2FF902CDDF23B /* WatchControlProtocolTests.swift */,
 				FD4ED33EC147E034206A8BF9 /* WindowProjectionTests.swift */,
 				AD7DBE68864ED2F618793C54 /* WorkspacePersistenceTests.swift */,
+				316317DB0EC45681DE7B8461 /* XREALPrivateHIDTests.swift */,
+				2ABDC24AEF3248709D6E08CE /* YouTubeAPIClientTests.swift */,
+				1C9343C6B1B4FD164F7C6CAF /* YouTubeDownloadStoreTests.swift */,
 				22463C62D2942613AF0DB254 /* YouTubeVideoIDParserTests.swift */,
 			);
 			path = ExtendRealityTests;
@@ -916,6 +1056,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0E98CB944F86619D85BC6790 /* ExtendRealityFocusIntents */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7CCF1B4740459AC390787EBA /* Build configuration list for PBXNativeTarget "ExtendRealityFocusIntents" */;
+			buildPhases = (
+				B7A22A6ADD873797BD782478 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ExtendRealityFocusIntents;
+			packageProductDependencies = (
+			);
+			productName = ExtendRealityFocusIntents;
+			productReference = BB0115C3E1698BDAF050D9C3 /* ExtendRealityFocusIntents.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		6DB54497AA5414FD8A90ECBC /* ExtendReality */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 91BB89C1EF400FE1BFB32283 /* Build configuration list for PBXNativeTarget "ExtendReality" */;
@@ -932,10 +1089,12 @@
 			dependencies = (
 				4AA399B08A7D0F4CEEFE7284 /* PBXTargetDependency */,
 				C1A761EA9DBB5D86CBF96B63 /* PBXTargetDependency */,
+				FE1EC8815C06A7F6165B7C76 /* PBXTargetDependency */,
 			);
 			name = ExtendReality;
 			packageProductDependencies = (
 				5B107E37E22F3904EB70F9DF /* RoyalVNCKit */,
+				03913C732ACADEEF536D815B /* YouTubeKit */,
 			);
 			productName = ExtendReality;
 			productReference = 9893182B0B9F40C3FBAFD73F /* ExtendReality.app */;
@@ -1092,6 +1251,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					0E98CB944F86619D85BC6790 = {
+						DevelopmentTeam = 8PYCRS3EA3;
+						ProvisioningStyle = Automatic;
+					};
 					6DB54497AA5414FD8A90ECBC = {
 						DevelopmentTeam = 8PYCRS3EA3;
 						ProvisioningStyle = Automatic;
@@ -1141,6 +1304,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4A757A550503CC994C77BB09 /* XCRemoteSwiftPackageReference "royalvnc" */,
+				A14945A410B20E599F01AC25 /* XCRemoteSwiftPackageReference "YouTubeKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D59BB49AA47D135802F46D62 /* Products */;
@@ -1148,6 +1312,7 @@
 			projectRoot = "";
 			targets = (
 				6DB54497AA5414FD8A90ECBC /* ExtendReality */,
+				0E98CB944F86619D85BC6790 /* ExtendRealityFocusIntents */,
 				E6AA945AE1F38EE462AFB5C9 /* ExtendRealityMac */,
 				85EAC94294649274DE4DC437 /* ExtendRealityMacTests */,
 				FDD71C5BC6EC0E111890F731 /* ExtendRealityMapsShare */,
@@ -1225,16 +1390,26 @@
 				4BAC578B52D3026934FD16F0 /* ControllerRootView.swift in Sources */,
 				68ACC4A61BC5F2E69D460977 /* DashboardEditorView.swift in Sources */,
 				7844E8E2375C19DE9DEA66E5 /* DashboardStore.swift in Sources */,
+				21F50DC049CF32E682E4949D /* DashboardTypes.swift in Sources */,
 				EC6834A30744BD775F429C9D /* DebugSocketStreamer.swift in Sources */,
 				AF0BA6502B24C9808326E874 /* DepthAnythingV2SmallF16.mlpackage in Sources */,
+				64F440661259569BC0894132 /* DeviceWorkspaceView.swift in Sources */,
+				5C44C5B259DF63B5A2553645 /* ExtendRealityFocusProfile.swift in Sources */,
 				E7BBB845C7DFF4FAB3DADD62 /* ExternalDisplayCaptureCoordinator.swift in Sources */,
 				0BEA088E8BD503DED7DEB1EA /* GeneratedStereoRenderer.swift in Sources */,
 				10A39DEFB09C6AF4490B47A9 /* GeneratedStereoShaders.metal in Sources */,
+				4E8A7A709F5E5A520660D57C /* HandGestureInterpreter.swift in Sources */,
+				AAFD3560199FD237275BAA19 /* HandTrackingController.swift in Sources */,
+				112B14F2A18A9997A9D247FB /* HandTrackingModels.swift in Sources */,
+				3DDF1F03DD0C9ADAA63C142A /* HandTrackingPreview.swift in Sources */,
 				315C041F132FA5143D7AD735 /* HardwareMouseInput.swift in Sources */,
 				6B4A1D7167FC8EAD40ED785B /* HeadPoseCore.swift in Sources */,
 				F628ED76E2FF3BA8E14DD314 /* HeadPoseProvider.swift in Sources */,
+				1A3854697890DA02C37C3C04 /* IOSHandControlView.swift in Sources */,
 				06E70D7D7392B6D257F9FB54 /* InputRouter.swift in Sources */,
 				A24FA029DD440A64E805A0CB /* KeychainStore.swift in Sources */,
+				51958B5C173B34B5E5B94C68 /* LiveTranslationController.swift in Sources */,
+				A9EFD17C4EA83E5A040E221B /* LiveTranslationSettingsView.swift in Sources */,
 				087BAB145B45443A71710FF6 /* MacSessionAudioController.swift in Sources */,
 				6E5D05F99AFC35240B89AF02 /* MacSourcePickerView.swift in Sources */,
 				862FCB1C5B1B81FF6946975B /* MacStreamClient.swift in Sources */,
@@ -1257,12 +1432,14 @@
 				F63092C91B5019AEB5A39D99 /* SpatialCanvasView.swift in Sources */,
 				3B769C205B2E170ACA65A60B /* SpatialCanvasViewController.swift in Sources */,
 				3440D8E226C97D81BC3C690F /* SpatialDashboardView.swift in Sources */,
+				81650F809F5C8541EDCD8763 /* SpeechAuthorizationBridge.swift in Sources */,
 				06087392F1CD7C4C261D01DE /* StereoDepthPipeline.swift in Sources */,
 				0AA6469850FA66AE6F904FAC /* SurfaceHostView.swift in Sources */,
 				F2442B3504C7E6F9C269A583 /* SurfaceRegistry.swift in Sources */,
 				8F2D96B23625E14C994AC80B /* SystemDataStore.swift in Sources */,
 				C03AF6D9F405E801EAF0ECDD /* TabbedBrowserSurfaceView.swift in Sources */,
 				323A7000BA4E3C3B97ABE739 /* TrackpadView.swift in Sources */,
+				22CA0A5A1BE4C45F435392E2 /* VisionHandPoseDetector.swift in Sources */,
 				160BC1AEFDA36C59E5500C17 /* VoiceAssistantCoordinator.swift in Sources */,
 				1D2CF23F247DEB77DF230283 /* VoiceAssistantModels.swift in Sources */,
 				69F2559E6F03001E337FF0E8 /* WakeWordController.swift in Sources */,
@@ -1275,7 +1452,10 @@
 				DEFF6ACF718F95C0B3BB0BFC /* WorkspacePersistence.swift in Sources */,
 				FA4E9687C778309CC9485EA9 /* WorkspaceStore.swift in Sources */,
 				137001DE3A5B8AEE3FBD4D15 /* WristPointerMotionProcessor.swift in Sources */,
+				BE82C37FC6615145AD5D46D7 /* XREALPrivateHIDPoseProvider.swift in Sources */,
 				67377302F4EFF49F8F6DB1DA /* YouTubeAPIClient.swift in Sources */,
+				81418A0F67D2C90193DE02A8 /* YouTubeAuthSession.swift in Sources */,
+				3CC0B6A30BE80E0D59B2E54B /* YouTubeDownloadStore.swift in Sources */,
 				F39AD2DF92278536BEFF5332 /* YouTubeSurface.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1286,19 +1466,28 @@
 			files = (
 				72765D42C21DD444671AFCB5 /* BrowserWindowSessionTests.swift in Sources */,
 				D76949CE43511ACBFD8A433D /* DashboardStoreTests.swift in Sources */,
+				133500DA90C217176572A664 /* DebugWorldTrackingPolicyTests.swift in Sources */,
+				19980EFC6BE1B852E9055423 /* DeviceWorkspacePresentationTests.swift in Sources */,
+				F455ADBAEC9D51BEB6023FAA /* ExtendRealityFocusProfileTests.swift in Sources */,
+				2E8BFF09830C86659B4DC93E /* HandGestureInterpreterTests.swift in Sources */,
 				D246D60C1BB22EE8DC46725A /* HeadPoseSmootherTests.swift in Sources */,
 				35919C3F765F6067FF20DB5B /* InputRouterTests.swift in Sources */,
+				304E10422188E8452415B690 /* LiveTranslationControllerTests.swift in Sources */,
 				158F2314F4A49AEBD1261C9E /* MacStreamProtocolTests.swift in Sources */,
 				18E1DAD1EB38CBE666E4996D /* MapsRouteLinkTests.swift in Sources */,
 				707B995896593DBD6D6D02AB /* PWAStoreTests.swift in Sources */,
 				106F32E2F205C81C06E1089A /* RemoteDisplayLayoutTests.swift in Sources */,
 				233B21C5B13BC832C4CC00EC /* SloppyVoiceTransportTests.swift in Sources */,
+				1486C807135045CDD727A117 /* SpeechAuthorizationBridgeTests.swift in Sources */,
 				F7205FC79B310C53069BE2C2 /* StereoDepthPipelineTests.swift in Sources */,
 				2D4F3318B89E78F3E6FACA73 /* VoiceAssistantTests.swift in Sources */,
 				4243B3F10D2A0E97A4F6768D /* WakeWordTests.swift in Sources */,
 				85E1BCC207457CF2030DFA03 /* WatchControlProtocolTests.swift in Sources */,
 				3D2524A8C98609C1DE5725E5 /* WindowProjectionTests.swift in Sources */,
 				F00F46746080972EC139F8EF /* WorkspacePersistenceTests.swift in Sources */,
+				DADDE671E7E08DDD47FD0A3B /* XREALPrivateHIDTests.swift in Sources */,
+				F6B15F7DD6A373DEAD6E4EB4 /* YouTubeAPIClientTests.swift in Sources */,
+				2F067E0071A652E57DE31105 /* YouTubeDownloadStoreTests.swift in Sources */,
 				B436B010C0FDCFCF47A27EEB /* YouTubeVideoIDParserTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1324,6 +1513,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C4E856F244612F4839B915AE /* ContentView.swift in Sources */,
+				CF440B97BA278BA951E58BEA /* DashboardTypes.swift in Sources */,
 				3B0D40F65657961B9AD0D0BD /* DirectCaptureCoordinator.swift in Sources */,
 				A1E5F8BD9DC82D1475920EFF /* DirectDisplayWindowController.swift in Sources */,
 				5375DAADE65903A703CFC4B9 /* DirectMetalSurfaceView.swift in Sources */,
@@ -1331,7 +1521,12 @@
 				8A9B296706B62DAFE9F952B1 /* DirectModeViews.swift in Sources */,
 				D7F56F12F16776528CFFC23E /* ExtendRealityMacApp.swift in Sources */,
 				49129BD08A6842B2FF1A008B /* FrameStreamingServer.swift in Sources */,
+				92FF6B41451B09164DDAF113 /* HandGestureInterpreter.swift in Sources */,
+				59EED94CDCF54393B74DF072 /* HandTrackingController.swift in Sources */,
+				3604CEC831615223130A78F0 /* HandTrackingModels.swift in Sources */,
+				C728331440EC8EF2883BD5D3 /* HandTrackingPreview.swift in Sources */,
 				5D71C191B00FF3DD5EFAEF2E /* HeadPoseCore.swift in Sources */,
+				17879ECF562AB47D571B9DA1 /* IOSHandControlView.swift in Sources */,
 				561E848795A2C48782D156FC /* InputRouter.swift in Sources */,
 				B4DF38B87713A84FB99F862B /* MacHeadPoseProviders.swift in Sources */,
 				E32DD59F07E4AC2D949D9A0C /* MacStreamingStore.swift in Sources */,
@@ -1344,12 +1539,22 @@
 				EE1DCB00EFB43A86ACB4E71C /* SpatialPointerController.swift in Sources */,
 				B42EDE4CAA1736AA8C671E58 /* StreamDetailView.swift in Sources */,
 				6934AACBA9DECD2D4DAF2ED2 /* StreamProfile.swift in Sources */,
+				8F54E1945E19279BF24112CC /* VisionHandPoseDetector.swift in Sources */,
 				806A1D543EFC60D17CC81F7C /* WindowProjection.swift in Sources */,
 				6CA0AAEFF2FF3995A69A7CBD /* WorkspaceLayoutProjection.swift in Sources */,
 				2745C19ACA0CC84EEFE34FAE /* WorkspaceModels.swift in Sources */,
 				85B007EADA986F3382A66EC4 /* WorkspacePersistence.swift in Sources */,
 				EE3BAB8BA65B8FBD1DAF690F /* WorkspaceStore.swift in Sources */,
 				C0216C01E17C4FC9836E41BC /* XREALUSBPoseProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B7A22A6ADD873797BD782478 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E5F43F0D00A8159B273028E /* ExtendRealityFocusFilterIntent.swift in Sources */,
+				C6D856B048326BC7053B0F68 /* ExtendRealityFocusProfile.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1406,6 +1611,11 @@
 			target = 6DB54497AA5414FD8A90ECBC /* ExtendReality */;
 			targetProxy = 7167A624A7A3BE428DC7BF07 /* PBXContainerItemProxy */;
 		};
+		FE1EC8815C06A7F6165B7C76 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0E98CB944F86619D85BC6790 /* ExtendRealityFocusIntents */;
+			targetProxy = 79A43F4007A74A75CD342589 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -1421,7 +1631,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.mac;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality.mac;
 				PRODUCT_NAME = ExtendRealityMac;
 				SDKROOT = macosx;
 			};
@@ -1439,7 +1649,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.mac;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality.mac;
 				PRODUCT_NAME = ExtendRealityMac;
 				SDKROOT = macosx;
 			};
@@ -1473,13 +1683,35 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality;
 				PRODUCT_NAME = ExtendReality;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				YOUTUBE_OAUTH_CLIENT_ID = "185337776045-ur5t0l5aigrhm36d5etj7o02dkc1uff3.apps.googleusercontent.com";
+				YOUTUBE_OAUTH_REVERSED_CLIENT_ID = "com.googleusercontent.apps.185337776045-ur5t0l5aigrhm36d5etj7o02dkc1uff3";
 			};
 			name = Release;
+		};
+		38416032ADE3A76240F1411A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = ExtendRealityFocusIntents/Resources/ExtendRealityFocusIntents.entitlements;
+				INFOPLIST_FILE = ExtendRealityFocusIntents/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "xr.sloppy.team.ExtendReality.focus-intents";
+				PRODUCT_NAME = "ExtendReality Focus";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		4E1BE09A3BC580CAC856E12A /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1491,7 +1723,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.watchkitapp.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality.watchkitapp.widget;
 				PRODUCT_NAME = "ExtendReality Watch Widget";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1527,11 +1759,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality;
 				PRODUCT_NAME = ExtendReality;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				YOUTUBE_OAUTH_CLIENT_ID = "185337776045-ur5t0l5aigrhm36d5etj7o02dkc1uff3.apps.googleusercontent.com";
+				YOUTUBE_OAUTH_REVERSED_CLIENT_ID = "com.googleusercontent.apps.185337776045-ur5t0l5aigrhm36d5etj7o02dkc1uff3";
 			};
 			name = Debug;
 		};
@@ -1540,7 +1774,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				INFOPLIST_FILE = ExtendRealityWatch/Resources/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality.watchkitapp;
 				PRODUCT_NAME = "ExtendReality Watch";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1634,6 +1868,26 @@
 			};
 			name = Release;
 		};
+		87EE996C7023D901E277B016 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = ExtendRealityFocusIntents/Resources/ExtendRealityFocusIntents.entitlements;
+				INFOPLIST_FILE = ExtendRealityFocusIntents/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "xr.sloppy.team.ExtendReality.focus-intents";
+				PRODUCT_NAME = "ExtendReality Focus";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		A4A3875FACC87430A912E120 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1645,7 +1899,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.vladprusakov.ExtendReality.maps-share";
+				PRODUCT_BUNDLE_IDENTIFIER = "xr.sloppy.team.ExtendReality.maps-share";
 				PRODUCT_NAME = ExtendRealityMapsShare;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1658,7 +1912,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				INFOPLIST_FILE = ExtendRealityWatch/Resources/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality.watchkitapp;
 				PRODUCT_NAME = "ExtendReality Watch";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1826,7 +2080,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.vladprusakov.ExtendReality.maps-share";
+				PRODUCT_BUNDLE_IDENTIFIER = "xr.sloppy.team.ExtendReality.maps-share";
 				PRODUCT_NAME = ExtendRealityMapsShare;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1844,7 +2098,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vladprusakov.ExtendReality.watchkitapp.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = xr.sloppy.team.ExtendReality.watchkitapp.widget;
 				PRODUCT_NAME = "ExtendReality Watch Widget";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1918,6 +2172,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		7CCF1B4740459AC390787EBA /* Build configuration list for PBXNativeTarget "ExtendRealityFocusIntents" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38416032ADE3A76240F1411A /* Debug */,
+				87EE996C7023D901E277B016 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		91BB89C1EF400FE1BFB32283 /* Build configuration list for PBXNativeTarget "ExtendReality" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1956,9 +2219,22 @@
 				revision = 337197afdb32020d3dfdb7d058989115b740cdc4;
 			};
 		};
+		A14945A410B20E599F01AC25 /* XCRemoteSwiftPackageReference "YouTubeKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/alexeichhorn/YouTubeKit.git";
+			requirement = {
+				kind = revision;
+				revision = 7cc81901f9bbf2f9d2766bd8a54e128b974e4c94;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		03913C732ACADEEF536D815B /* YouTubeKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A14945A410B20E599F01AC25 /* XCRemoteSwiftPackageReference "YouTubeKit" */;
+			productName = YouTubeKit;
+		};
 		5B107E37E22F3904EB70F9DF /* RoyalVNCKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4A757A550503CC994C77BB09 /* XCRemoteSwiftPackageReference "royalvnc" */;

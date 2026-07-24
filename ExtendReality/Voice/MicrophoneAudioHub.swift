@@ -91,9 +91,9 @@ final class MicrophoneAudioHub {
         await permissionRequester()
     }
 
-    private static func requestNativePermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { granted in
+    nonisolated private static func requestNativePermission() async -> Bool {
+        await withCheckedContinuation(isolation: nil) { continuation in
+            AVAudioApplication.requestRecordPermission { @Sendable granted in
                 continuation.resume(returning: granted)
             }
         }

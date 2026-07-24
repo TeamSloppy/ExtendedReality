@@ -53,7 +53,8 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
     @ObservationIgnored private let dataMessageHandler: BrowserDataMessageHandler?
     @ObservationIgnored private let windowMessageHandler: BrowserWindowMessageHandler?
     @ObservationIgnored private let spatialWindowClient: SpatialWindowClient?
-    @ObservationIgnored private let textInputFocusHandler: () -> Void
+    @ObservationIgnored private let textInputFocusHandler: (String) -> Void
+    @ObservationIgnored private var cursorPosition = CGPoint(x: 0.5, y: 0.5)
     @ObservationIgnored var newWindowHandler: ((URLRequest) -> Void)?
 
     private static let dataMessageHandlerName = "extendRealityData"
@@ -67,7 +68,7 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
         capabilityProvider: @escaping (PWACapability) -> Bool = { _ in false },
         dataProvider: ((PWACapability) throws -> [String: Any])? = nil,
         spatialWindowClient: SpatialWindowClient? = nil,
-        textInputFocusHandler: @escaping () -> Void = {}
+        textInputFocusHandler: @escaping (String) -> Void = { _ in }
     ) {
         address = initialURL
         self.navigationPolicy = navigationPolicy
@@ -169,7 +170,15 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
         case .pointerUp(let position):
             dispatchPointerEvent("pointerup", at: position, click: true)
         case .scroll(let delta):
-            webView.evaluateJavaScript("window.scrollBy(\(delta.dx * 900), \(delta.dy * 900));")
+            dispatchWheelEvent(
+                deltaX: Double(delta.dx * 900),
+                deltaY: Double(delta.dy * 900),
+                at: cursorPosition,
+                ctrlKey: false,
+                scrollsPageWhenUnhandled: true
+            )
+        case .magnify(let scaleDelta, let position):
+            dispatchMagnifyEvent(scaleDelta: scaleDelta, at: position)
         case .insertText(let text):
             let literal = Self.javaScriptLiteral(text)
             webView.evaluateJavaScript("""
@@ -197,11 +206,110 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
                   }
                 })();
                 """)
+        case .replaceText(let text):
+            replaceActiveText(with: text, submits: false)
+        case .submitText(let text):
+            replaceActiveText(with: text, submits: true)
         case .back:
             if webView.canGoBack { webView.goBack() }
         case .media:
             break
         }
+    }
+
+    private func replaceActiveText(with text: String, submits: Bool) {
+        let literal = Self.javaScriptLiteral(text)
+        webView.evaluateJavaScript("""
+            (() => {
+              let e = document.activeElement;
+              while (e?.shadowRoot?.activeElement) e = e.shadowRoot.activeElement;
+              if (!e) return false;
+              const value = \(literal);
+              if (typeof e.value === 'string') {
+                const prototype = e instanceof HTMLTextAreaElement
+                  ? HTMLTextAreaElement.prototype
+                  : HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+                if (setter) setter.call(e, value); else e.value = value;
+                e.setSelectionRange?.(value.length, value.length);
+              } else if (e.isContentEditable) {
+                e.textContent = value;
+              } else {
+                return false;
+              }
+              e.dispatchEvent(new InputEvent('input', {
+                bubbles: true,
+                inputType: 'insertReplacementText',
+                data: null
+              }));
+              if (\(submits)) {
+                e.dispatchEvent(new Event('change', { bubbles: true }));
+                const options = {
+                  key: 'Enter',
+                  code: 'Enter',
+                  keyCode: 13,
+                  which: 13,
+                  bubbles: true,
+                  cancelable: true
+                };
+                const shouldSubmit = e.dispatchEvent(new KeyboardEvent('keydown', options));
+                e.dispatchEvent(new KeyboardEvent('keypress', options));
+                e.dispatchEvent(new KeyboardEvent('keyup', options));
+                if (shouldSubmit && e.form) {
+                  if (typeof e.form.requestSubmit === 'function') e.form.requestSubmit();
+                  else e.form.submit();
+                }
+              }
+              return true;
+            })();
+            """)
+    }
+
+    private func dispatchMagnifyEvent(scaleDelta: CGFloat, at position: CGPoint) {
+        let scale = Double(scaleDelta).clamped(to: 0.25 ... 4)
+        dispatchWheelEvent(
+            deltaX: 0,
+            deltaY: -log(scale) * 300,
+            at: position,
+            ctrlKey: true,
+            scrollsPageWhenUnhandled: false
+        )
+    }
+
+    private func dispatchWheelEvent(
+        deltaX: Double,
+        deltaY: Double,
+        at position: CGPoint,
+        ctrlKey: Bool,
+        scrollsPageWhenUnhandled: Bool
+    ) {
+        let x = Double(position.x.clamped(to: 0 ... 1))
+        let y = Double(position.y.clamped(to: 0 ... 1))
+        webView.evaluateJavaScript("""
+            (() => {
+              const x = \(x) * window.innerWidth;
+              const y = \(y) * window.innerHeight;
+              const elementAtPoint = root => {
+                const hit = root.elementFromPoint?.(x, y);
+                if (!hit) return null;
+                return hit.shadowRoot ? elementAtPoint(hit.shadowRoot) ?? hit : hit;
+              };
+              const target = elementAtPoint(document) || document.scrollingElement || document.body;
+              const unhandled = target?.dispatchEvent(new WheelEvent('wheel', {
+                bubbles: true,
+                cancelable: true,
+                clientX: x,
+                clientY: y,
+                deltaX: \(deltaX),
+                deltaY: \(deltaY),
+                deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+                ctrlKey: \(ctrlKey)
+              }));
+              if (unhandled && \(scrollsPageWhenUnhandled)) {
+                window.scrollBy(\(deltaX), \(deltaY));
+              }
+            })();
+            """)
     }
 
     func webView(
@@ -373,6 +481,7 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
     }
 
     private func updateCursor(_ position: CGPoint) {
+        cursorPosition = position
         installCursor()
         webView.evaluateJavaScript("""
             (() => { const c = document.getElementById('__extendRealityCursor'); if(c){ c.style.left='\(position.x * 100)%'; c.style.top='\(position.y * 100)%'; } })();
@@ -397,12 +506,14 @@ final class BrowserSession: NSObject, InputTarget, WKNavigationDelegate, WKUIDel
               const editable = e.closest?.('textarea, [contenteditable]:not([contenteditable="false"]), input:not([type]), input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], input[type="password"], input[type="number"]');
               if (!editable || editable.disabled || editable.readOnly) return false;
               editable.focus({ preventScroll: false });
-              return true;
-              """ : "return false;")
+              return typeof editable.value === 'string'
+                ? editable.value
+                : (editable.innerText ?? editable.textContent ?? '');
+              """ : "return null;")
             })();
             """) { [weak self] value, _ in
-                guard value as? Bool == true else { return }
-                self?.textInputFocusHandler()
+                guard let text = value as? String else { return }
+                self?.textInputFocusHandler(text)
             }
     }
 

@@ -6,6 +6,7 @@ import UIKit
 enum ControllerInputMode: String, CaseIterable, Identifiable {
     case trackpad
     case laser
+    case hands
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ enum ControllerInputMode: String, CaseIterable, Identifiable {
         switch self {
         case .trackpad: "Trackpad"
         case .laser: "Laser"
+        case .hands: "Hands"
         }
     }
 
@@ -20,6 +22,71 @@ enum ControllerInputMode: String, CaseIterable, Identifiable {
         switch self {
         case .trackpad: "cursorarrow"
         case .laser: "scope"
+        case .hands: "hand.point.up.left.fill"
+        }
+    }
+}
+
+private final class ThreeFingerPinchGestureRecognizer: UIGestureRecognizer {
+    private var trackedTouches: [ObjectIdentifier: UITouch] = [:]
+    private var initialSpread: CGFloat?
+    private let activationScaleDelta: CGFloat = 0.12
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        for touch in touches {
+            trackedTouches[ObjectIdentifier(touch)] = touch
+        }
+        guard trackedTouches.count <= 3 else {
+            state = .failed
+            return
+        }
+        if trackedTouches.count == 3 {
+            initialSpread = spread()
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard state == .possible,
+              trackedTouches.count == 3,
+              let initialSpread,
+              initialSpread > 0 else { return }
+        let scale = spread() / initialSpread
+        if abs(scale - 1) >= activationScaleDelta {
+            state = .ended
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        for touch in touches {
+            trackedTouches.removeValue(forKey: ObjectIdentifier(touch))
+        }
+        if state == .possible {
+            state = .failed
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        state = .cancelled
+    }
+
+    override func reset() {
+        super.reset()
+        trackedTouches.removeAll()
+        initialSpread = nil
+    }
+
+    private func spread() -> CGFloat {
+        guard let view, trackedTouches.count == 3 else { return 0 }
+        let points = trackedTouches.values.map { $0.location(in: view) }
+        let center = points.reduce(CGPoint.zero) { partial, point in
+            CGPoint(x: partial.x + point.x / 3, y: partial.y + point.y / 3)
+        }
+        return points.reduce(0) { partial, point in
+            partial + hypot(point.x - center.x, point.y - center.y) / 3
         }
     }
 }
@@ -31,7 +98,6 @@ struct TrackpadView: View {
     let mode: ControllerInputMode
     let laserController: LaserPointerController
     var onShowDashboard: () -> Void = {}
-    var onShowDock: () -> Void = {}
     var onCenterWindow: () -> Void = {}
 
     var body: some View {
@@ -88,7 +154,6 @@ struct TrackpadView: View {
                     inputRouter: inputRouter,
                     laserController: laserController,
                     onShowDashboard: onShowDashboard,
-                    onShowDock: onShowDock,
                     onCenterWindow: onCenterWindow
                 )
             }
@@ -109,8 +174,8 @@ struct TrackpadView: View {
                 Image(systemName: "arrow.up.and.down")
                     .font(.title3.weight(.semibold))
                 VStack(spacing: 3) {
-                    Text("1F SCROLL")
-                    Text("2F DEPTH")
+                    Text(workspace.controlMode == .arrange ? "SCROLL" : "1F / 2F")
+                    Text(workspace.controlMode == .arrange ? "DEPTH" : "SCROLL")
                 }
                 .font(.caption2.weight(.bold))
                 .tracking(0.8)
@@ -131,14 +196,15 @@ struct TrackpadView: View {
                 inputRouter: inputRouter,
                 laserController: laserController,
                 onShowDashboard: onShowDashboard,
-                onShowDock: onShowDock,
                 onCenterWindow: onCenterWindow
             )
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Scroll area")
         .accessibilityHint(
-            "Drag with one finger to scroll. Drag with two fingers to change window distance."
+            workspace.controlMode == .arrange
+                ? "Scroll to change window distance."
+                : "Scroll with one or two fingers in the active window."
         )
         .accessibilityIdentifier("scrollArea")
     }
@@ -148,11 +214,13 @@ struct TrackpadView: View {
     }
 
     private var instructionText: String {
-        if workspace.presentationMode == .dashboard {
+        if workspace.isDashboardPresented || workspace.presentationMode == .widgets {
             if workspace.controlMode == .arrange {
                 return "drag a card to move · pinch to resize · double tap to finish"
             }
-            return "move to a card · tap to open · three fingers up for dock"
+            return workspace.isDashboardPresented
+                ? "move to an app · tap to open · pinch with 3 fingers to close"
+                : "move to a widget · 3F up for windows · 3F pinch for dashboard"
         }
         if workspace.controlMode == .arrange {
             if workspace.layoutMode == .stack {
@@ -162,11 +230,13 @@ struct TrackpadView: View {
         }
         switch mode {
         case .trackpad:
-            return "drag pointer · tap click · pinch resize · 2F scroll · 3F navigate"
+            return "drag pointer · tap click · pinch in app · 2F scroll · 3F navigate"
         case .laser where laserController.isActive:
-            return "move iPhone to aim · tap click · pinch resize"
+            return "move iPhone to aim · tap click · pinch in app"
         case .laser:
-            return "drag to point · tap click · pinch resize"
+            return "drag to point · tap click · pinch in app"
+        case .hands:
+            return "point to aim · pinch to click and drag"
         }
     }
 
@@ -272,6 +342,11 @@ private enum TrackpadGestureZone {
     case scroll
 }
 
+private struct WindowResizeTarget {
+    let windowID: UUID
+    let edge: WindowResizeEdge
+}
+
 struct ScrollMomentum: Equatable {
     static let decelerationRate = Double(UIScrollView.DecelerationRate.normal.rawValue)
     static let maximumVelocity: CGFloat = 6_000
@@ -315,7 +390,6 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
     let inputRouter: InputRouter
     let laserController: LaserPointerController
     let onShowDashboard: () -> Void
-    let onShowDock: () -> Void
     let onCenterWindow: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -336,15 +410,15 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
         coordinator.stopScrollMomentum()
+        coordinator.parent.inputRouter.endWindowResize()
     }
 
     @MainActor
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: TrackpadGestureSurface
         private var previousTranslation = CGPoint.zero
-        private var previousDistanceTranslation = CGPoint.zero
         private var previousScale: CGFloat = 1
-        private var resizingWindowID: UUID?
+        private var resizeTarget: WindowResizeTarget?
         private var scrollMomentum: ScrollMomentum?
         private var scrollDisplayLink: CADisplayLink?
         private var scrollFrameTimestamp: CFTimeInterval?
@@ -362,40 +436,37 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             primaryPan.delegate = self
             view.addGestureRecognizer(primaryPan)
 
-            if parent.zone == .scroll {
-                let distancePan = UIPanGestureRecognizer(
-                    target: self,
-                    action: #selector(handleDistancePan(_:))
-                )
-                distancePan.minimumNumberOfTouches = 2
-                distancePan.maximumNumberOfTouches = 2
-                distancePan.delegate = self
-                view.addGestureRecognizer(distancePan)
-                return
-            }
-
             let scrollPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerScroll(_:)))
             scrollPan.minimumNumberOfTouches = 2
             scrollPan.maximumNumberOfTouches = 2
             scrollPan.delegate = self
             view.addGestureRecognizer(scrollPan)
 
-            let showDashboardSwipe = UISwipeGestureRecognizer(
+            if parent.zone == .scroll { return }
+
+            let showWidgetsSwipe = UISwipeGestureRecognizer(
                 target: self,
-                action: #selector(handleShowDashboardSwipe(_:))
+                action: #selector(handleShowWidgetsSwipe(_:))
             )
-            showDashboardSwipe.direction = .down
-            showDashboardSwipe.numberOfTouchesRequired = 3
-            showDashboardSwipe.delegate = self
-            view.addGestureRecognizer(showDashboardSwipe)
-            let showDockSwipe = UISwipeGestureRecognizer(
+            showWidgetsSwipe.direction = .down
+            showWidgetsSwipe.numberOfTouchesRequired = 3
+            showWidgetsSwipe.delegate = self
+            view.addGestureRecognizer(showWidgetsSwipe)
+            let showWindowsSwipe = UISwipeGestureRecognizer(
                 target: self,
-                action: #selector(handleShowDockSwipe(_:))
+                action: #selector(handleShowWindowsSwipe(_:))
             )
-            showDockSwipe.direction = .up
-            showDockSwipe.numberOfTouchesRequired = 3
-            showDockSwipe.delegate = self
-            view.addGestureRecognizer(showDockSwipe)
+            showWindowsSwipe.direction = .up
+            showWindowsSwipe.numberOfTouchesRequired = 3
+            showWindowsSwipe.delegate = self
+            view.addGestureRecognizer(showWindowsSwipe)
+
+            let dashboardPinch = ThreeFingerPinchGestureRecognizer(
+                target: self,
+                action: #selector(handleDashboardPinch(_:))
+            )
+            dashboardPinch.delegate = self
+            view.addGestureRecognizer(dashboardPinch)
 
             let previousWindowSwipe = UISwipeGestureRecognizer(
                 target: self,
@@ -439,35 +510,46 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             view.addGestureRecognizer(pinch)
         }
 
-        @objc private func handleShowDashboardSwipe(_ recognizer: UISwipeGestureRecognizer) {
+        @objc private func handleShowWidgetsSwipe(_ recognizer: UISwipeGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            parent.workspace.showWidgets()
+            parent.inputRouter.setDashboardPresented(true)
+            ControllerHaptics.navigation()
+        }
+
+        @objc private func handleShowWindowsSwipe(_ recognizer: UISwipeGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            parent.workspace.showWindows()
+            parent.inputRouter.setDashboardPresented(false)
+            ControllerHaptics.navigation()
+        }
+
+        @objc private func handleDashboardPinch(_ recognizer: ThreeFingerPinchGestureRecognizer) {
             guard recognizer.state == .ended else { return }
             parent.onShowDashboard()
             ControllerHaptics.navigation()
         }
 
-        @objc private func handleShowDockSwipe(_ recognizer: UISwipeGestureRecognizer) {
-            guard recognizer.state == .ended else { return }
-            parent.onShowDock()
-            ControllerHaptics.navigation()
-        }
-
         @objc private func handlePreviousWindowSwipe(_ recognizer: UISwipeGestureRecognizer) {
             guard recognizer.state == .ended,
-                  parent.workspace.presentationMode == .workspace else { return }
+                  parent.workspace.presentationMode == .windows,
+                  !parent.workspace.isDashboardPresented else { return }
             parent.workspace.focusAdjacentWindow(by: -1)
             ControllerHaptics.navigation()
         }
 
         @objc private func handleNextWindowSwipe(_ recognizer: UISwipeGestureRecognizer) {
             guard recognizer.state == .ended,
-                  parent.workspace.presentationMode == .workspace else { return }
+                  parent.workspace.presentationMode == .windows,
+                  !parent.workspace.isDashboardPresented else { return }
             parent.workspace.focusAdjacentWindow(by: 1)
             ControllerHaptics.navigation()
         }
 
         @objc private func handleCenterDoubleTap(_ recognizer: UITapGestureRecognizer) {
             guard recognizer.state == .ended,
-                  parent.workspace.presentationMode == .workspace,
+                  parent.workspace.presentationMode == .windows,
+                  !parent.workspace.isDashboardPresented,
                   parent.workspace.activeWindowID != nil else { return }
             parent.onCenterWindow()
             ControllerHaptics.navigation()
@@ -478,6 +560,7 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             switch recognizer.state {
             case .began:
                 stopScrollMomentum()
+                parent.inputRouter.endWindowResize()
                 previousTranslation = .zero
                 ControllerHaptics.gestureStart()
                 if parent.zone == .scroll { return }
@@ -486,17 +569,17 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
                    !parent.laserController.isActive {
                     movePointer(to: recognizer.location(in: view), in: view.bounds.size)
                 }
-                if parent.workspace.presentationMode == .dashboard,
+                if isDashboardSurfacePresented,
                    parent.workspace.controlMode == .arrange,
                    let itemID = parent.inputRouter.dashboardItem() {
                     parent.dashboard.beginArranging(itemID)
                     ControllerHaptics.selection()
                 } else {
                     parent.workspace.beginActiveWindowMove()
-                    resizingWindowID = resizeTargetAtCursor()
+                    resizeTarget = resizeTargetAtCursor()
                 }
-                if let resizingWindowID {
-                    parent.workspace.focus(resizingWindowID)
+                if let resizeTarget {
+                    parent.workspace.focus(resizeTarget.windowID)
                     ControllerHaptics.selection()
                 }
             case .changed:
@@ -508,8 +591,8 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
                 previousTranslation = translation
 
                 if parent.zone == .scroll {
-                    scroll(by: delta, in: view.bounds.size)
-                } else if parent.workspace.presentationMode == .dashboard,
+                    routeScroll(by: delta, in: view.bounds.size)
+                } else if isDashboardSurfacePresented,
                    parent.workspace.controlMode == .arrange {
                     let normalizedDelta = normalized(delta, in: view.bounds.size)
                     parent.dashboard.moveSelected(normalizedDelta: normalizedDelta)
@@ -518,15 +601,18 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
                         in: nil,
                         dispatchesToSurface: false
                     )
-                } else if let resizingWindowID {
+                } else if let resizeTarget {
                     let normalized = normalized(delta, in: view.bounds.size)
                     parent.workspace.resizeWindow(
-                        resizingWindowID,
-                        normalizedDelta: normalized.dx
+                        resizeTarget.windowID,
+                        normalizedDelta: resizeTarget.edge.resizeDelta(from: normalized)
                     )
                     parent.inputRouter.movePointer(
-                        delta: CGVector(dx: normalized.dx * 0.7, dy: 0),
-                        in: resizingWindowID,
+                        delta: CGVector(
+                            dx: normalized.dx * 0.7,
+                            dy: normalized.dy * 0.7
+                        ),
+                        in: resizeTarget.windowID,
                         dispatchesToSurface: false
                     )
                 } else if parent.workspace.controlMode == .arrange {
@@ -548,14 +634,17 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             case .ended:
                 previousTranslation = .zero
                 if parent.zone == .scroll {
-                    startScrollMomentum(
-                        velocity: recognizer.velocity(in: view),
-                        surfaceSize: view.bounds.size
-                    )
+                    if parent.workspace.controlMode == .pointer {
+                        startScrollMomentum(
+                            velocity: recognizer.velocity(in: view),
+                            surfaceSize: view.bounds.size
+                        )
+                    }
                     return
                 }
-                resizingWindowID = nil
-                if parent.workspace.presentationMode == .dashboard {
+                resizeTarget = nil
+                parent.inputRouter.endWindowResize()
+                if isDashboardSurfacePresented {
                     parent.dashboard.endArranging()
                 } else {
                     parent.workspace.endActiveWindowMove()
@@ -563,8 +652,9 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             case .cancelled, .failed:
                 previousTranslation = .zero
                 stopScrollMomentum()
-                resizingWindowID = nil
-                if parent.workspace.presentationMode == .dashboard {
+                resizeTarget = nil
+                parent.inputRouter.endWindowResize()
+                if isDashboardSurfacePresented {
                     parent.dashboard.endArranging()
                 } else if parent.zone == .main {
                     parent.workspace.endActiveWindowMove()
@@ -588,41 +678,18 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
                     y: translation.y - previousTranslation.y
                 )
                 previousTranslation = translation
-                scroll(by: delta, in: view.bounds.size)
+                routeScroll(by: delta, in: view.bounds.size)
             case .ended:
                 previousTranslation = .zero
-                startScrollMomentum(
-                    velocity: recognizer.velocity(in: view),
-                    surfaceSize: view.bounds.size
-                )
+                if parent.workspace.controlMode == .pointer {
+                    startScrollMomentum(
+                        velocity: recognizer.velocity(in: view),
+                        surfaceSize: view.bounds.size
+                    )
+                }
             case .cancelled, .failed:
                 previousTranslation = .zero
                 stopScrollMomentum()
-            default:
-                break
-            }
-        }
-
-        @objc private func handleDistancePan(_ recognizer: UIPanGestureRecognizer) {
-            guard let view = recognizer.view,
-                  parent.workspace.presentationMode == .workspace,
-                  let windowID = parent.workspace.activeWindowID else { return }
-            switch recognizer.state {
-            case .began:
-                stopScrollMomentum()
-                previousDistanceTranslation = .zero
-                ControllerHaptics.gestureStart()
-            case .changed:
-                let translation = recognizer.translation(in: view)
-                let deltaY = translation.y - previousDistanceTranslation.y
-                previousDistanceTranslation = translation
-                let normalizedDelta = deltaY / max(view.bounds.height, 1)
-                parent.workspace.adjustWindowDistance(
-                    windowID,
-                    by: Double(normalizedDelta) * 1.6
-                )
-            case .ended, .cancelled, .failed:
-                previousDistanceTranslation = .zero
             default:
                 break
             }
@@ -655,10 +722,11 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
         }
 
         @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+            guard recognizer.numberOfTouches < 3 else { return }
             switch recognizer.state {
             case .began:
                 previousScale = 1
-                if parent.workspace.presentationMode == .dashboard,
+                if isDashboardSurfacePresented,
                    parent.workspace.controlMode == .arrange,
                    let itemID = parent.inputRouter.dashboardItem() {
                     parent.dashboard.beginArranging(itemID)
@@ -667,15 +735,20 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             case .changed:
                 let delta = recognizer.scale / previousScale
                 previousScale = recognizer.scale
-                if parent.workspace.presentationMode == .dashboard,
+                if isDashboardSurfacePresented,
                    parent.workspace.controlMode == .arrange {
                     parent.dashboard.scaleSelected(by: delta)
-                } else if parent.workspace.presentationMode == .workspace {
+                } else if parent.workspace.presentationMode == .windows,
+                          !parent.workspace.isDashboardPresented,
+                          parent.workspace.controlMode == .arrange {
                     parent.workspace.scaleActiveWindow(by: delta)
+                } else if parent.workspace.presentationMode == .windows,
+                          !parent.workspace.isDashboardPresented {
+                    parent.inputRouter.magnify(by: delta, in: targetWindowID)
                 }
             case .ended, .cancelled, .failed:
                 previousScale = 1
-                if parent.workspace.presentationMode == .dashboard {
+                if isDashboardSurfacePresented {
                     parent.dashboard.endArranging()
                 }
             default:
@@ -693,17 +766,33 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             )
         }
 
-        private func resizeTargetAtCursor() -> UUID? {
+        private func resizeTargetAtCursor() -> WindowResizeTarget? {
             guard parent.zone == .main,
-                  parent.workspace.presentationMode == .workspace,
+                  parent.workspace.presentationMode == .windows,
+                  !parent.workspace.isDashboardPresented,
                   parent.workspace.controlMode == .pointer,
                   let windowID = parent.inputRouter.window(),
-                  parent.inputRouter.chromeRegion(in: windowID) == .resizeHandle else { return nil }
-            return windowID
+                  let hover = parent.inputRouter.beginWindowResize(in: windowID) else { return nil }
+            return WindowResizeTarget(windowID: windowID, edge: hover.edge)
         }
 
         private func scroll(by delta: CGPoint, in size: CGSize) {
             scroll(by: delta, in: size, windowID: targetWindowID)
+        }
+
+        private func routeScroll(by delta: CGPoint, in size: CGSize) {
+            if parent.workspace.presentationMode == .windows,
+               !parent.workspace.isDashboardPresented,
+               parent.workspace.controlMode == .arrange,
+               let windowID = parent.workspace.activeWindowID {
+                let normalizedDelta = delta.y / max(size.height, 1)
+                parent.workspace.adjustWindowDistance(
+                    windowID,
+                    by: Double(normalizedDelta) * 1.6
+                )
+                return
+            }
+            scroll(by: delta, in: size)
         }
 
         private func scroll(by delta: CGPoint, in size: CGSize, windowID: UUID?) {
@@ -733,7 +822,7 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
 
         @objc private func advanceScrollMomentum(_ displayLink: CADisplayLink) {
             guard targetWindowID == scrollMomentumTargetWindowID,
-                  !parent.workspace.isDockPresented,
+                  parent.workspace.controlMode == .pointer,
                   !parent.workspace.isAppSwitcherPresented,
                   var momentum = scrollMomentum else {
                 stopScrollMomentum()
@@ -768,9 +857,13 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
         }
 
         private var targetWindowID: UUID? {
-            parent.workspace.presentationMode == .dashboard
+            isDashboardSurfacePresented
                 ? nil
                 : parent.workspace.activeWindowID
+        }
+
+        private var isDashboardSurfacePresented: Bool {
+            parent.workspace.isDashboardPresented || parent.workspace.presentationMode == .widgets
         }
 
         private func normalized(_ delta: CGPoint, in size: CGSize) -> CGVector {
@@ -784,7 +877,8 @@ private struct TrackpadGestureSurface: UIViewRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
-            false
+            gestureRecognizer is ThreeFingerPinchGestureRecognizer
+                || otherGestureRecognizer is ThreeFingerPinchGestureRecognizer
         }
     }
 }

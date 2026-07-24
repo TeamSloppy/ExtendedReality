@@ -14,6 +14,31 @@ enum WindowChromeRegion: Equatable {
     case resizeHandle
 }
 
+enum WindowResizeEdge: Equatable {
+    case leading
+    case trailing
+    case top
+    case bottom
+
+    func resizeDelta(from delta: CGVector) -> CGFloat {
+        switch self {
+        case .leading:
+            -delta.dx
+        case .trailing:
+            delta.dx
+        case .top:
+            -delta.dy
+        case .bottom:
+            delta.dy
+        }
+    }
+}
+
+struct WindowResizeHover: Equatable {
+    let edge: WindowResizeEdge
+    let position: CGFloat
+}
+
 enum WindowChromeAction: Equatable {
     case toggleOrientation
     case toggleAttachment
@@ -28,7 +53,6 @@ struct WindowChromeLayout: Equatable {
     static let handleGap: CGFloat = 14
     static let handleHeight: CGFloat = 28
     static let resizeHandleWidth: CGFloat = 32
-    static let resizeHandleHeight: CGFloat = 128
     static var verticalChromeHeight: CGFloat {
         controlBarHeight + controlBarGap + handleGap + handleHeight
     }
@@ -60,7 +84,7 @@ struct WindowChromeLayout: Equatable {
     func region(at normalizedPosition: CGPoint) -> WindowChromeRegion {
         guard let point = localPoint(for: normalizedPosition) else { return .outside }
 
-        if resizeHandleRect.contains(point) {
+        if resizeHover(atLocalPoint: point) != nil {
             return .resizeHandle
         }
         if surfaceRect.contains(point) {
@@ -90,6 +114,11 @@ struct WindowChromeLayout: Equatable {
             return .moveHandle
         }
         return .outside
+    }
+
+    func resizeHover(at normalizedPosition: CGPoint) -> WindowResizeHover? {
+        guard let point = localPoint(for: normalizedPosition) else { return nil }
+        return resizeHover(atLocalPoint: point)
     }
 
     func surfacePosition(for normalizedPosition: CGPoint, clamped: Bool = false) -> CGPoint? {
@@ -150,12 +179,28 @@ struct WindowChromeLayout: Equatable {
         )
     }
 
-    private var resizeHandleRect: CGRect {
-        CGRect(
-            x: max(0, frame.width - Self.resizeHandleWidth),
-            y: surfaceRect.midY - Self.resizeHandleHeight / 2,
-            width: min(Self.resizeHandleWidth, frame.width),
-            height: min(Self.resizeHandleHeight, surfaceRect.height)
+    private func resizeHover(atLocalPoint point: CGPoint) -> WindowResizeHover? {
+        guard surfaceRect.contains(point) else { return nil }
+
+        let candidates: [(edge: WindowResizeEdge, distance: CGFloat)] = [
+            (.leading, point.x - surfaceRect.minX),
+            (.trailing, surfaceRect.maxX - point.x),
+            (.top, point.y - surfaceRect.minY),
+            (.bottom, surfaceRect.maxY - point.y),
+        ]
+        guard let nearest = candidates.min(by: { $0.distance < $1.distance }),
+              nearest.distance <= Self.resizeHandleWidth else { return nil }
+
+        let position: CGFloat
+        switch nearest.edge {
+        case .leading, .trailing:
+            position = (point.y - surfaceRect.minY) / max(surfaceRect.height, 1)
+        case .top, .bottom:
+            position = (point.x - surfaceRect.minX) / max(surfaceRect.width, 1)
+        }
+        return WindowResizeHover(
+            edge: nearest.edge,
+            position: position.clamped(to: 0 ... 1)
         )
     }
 
@@ -241,7 +286,13 @@ struct DashboardItemInputLayout: Equatable, Sendable {
 }
 
 enum StatusBarAction: Hashable {
+    case toggleDashboardScenarioPicker
+    case selectDashboardScenario(DashboardScenario)
     case dashboard
+    case widgets
+    case windows
+    case toggleWidgetPicker
+    case toggleWidget(DashboardWidgetKind)
     case pointerMode
     case arrangeMode
     case toggleWorkspaceLayout
@@ -249,8 +300,26 @@ enum StatusBarAction: Hashable {
 }
 
 enum DockAction: Hashable {
-    case dismiss
-    case launch(UUID)
+    case focus(UUID)
+}
+
+enum AppSwitcherAction: Hashable {
+    case focus(UUID)
+    case close(UUID)
+
+    var windowID: UUID {
+        switch self {
+        case .focus(let id), .close(let id):
+            id
+        }
+    }
+
+    fileprivate var hitTestPriority: Int {
+        switch self {
+        case .focus: 0
+        case .close: 1
+        }
+    }
 }
 
 enum PointerHoverTarget: Equatable {
@@ -258,7 +327,7 @@ enum PointerHoverTarget: Equatable {
     case statusBar(StatusBarAction)
     case dashboard(UUID)
     case dock(DockAction)
-    case appSwitcher(UUID)
+    case appSwitcher(AppSwitcherAction)
     case windowChrome(UUID, WindowChromeRegion)
     case panel(SpatialPanelSurfaceID)
 }
@@ -268,7 +337,10 @@ enum InputCommand: Sendable, Equatable {
     case pointerDown(normalizedPosition: CGPoint)
     case pointerUp(normalizedPosition: CGPoint)
     case scroll(normalizedDelta: CGVector)
+    case magnify(scaleDelta: CGFloat, normalizedPosition: CGPoint)
     case insertText(String)
+    case replaceText(String)
+    case submitText(String)
     case back
     case media(MediaCommand)
 }
@@ -305,6 +377,9 @@ final class InputRouter {
     private(set) var cursor = CGPoint(x: 0.5, y: 0.5)
     private(set) var isCursorVisible = true
     private(set) var textInputFocusRequest = UUID()
+    private(set) var textInputDraft = ""
+    private(set) var activeResizeWindowID: UUID?
+    private(set) var activeResizeHover: WindowResizeHover?
     @ObservationIgnored private let cursorInactivityDuration: Duration
     @ObservationIgnored private var cursorInactivityTask: Task<Void, Never>?
     @ObservationIgnored private var hoveredTarget: PointerHoverTarget?
@@ -325,8 +400,8 @@ final class InputRouter {
     @ObservationIgnored private var pressedStatusBarAction: StatusBarAction?
     @ObservationIgnored private var dockHitFrames: [DockAction: CGRect] = [:]
     @ObservationIgnored private var pressedDockAction: DockAction?
-    @ObservationIgnored private var appSwitcherHitFrames: [UUID: CGRect] = [:]
-    @ObservationIgnored private var pressedAppSwitcherWindowID: UUID?
+    @ObservationIgnored private var appSwitcherHitFrames: [AppSwitcherAction: CGRect] = [:]
+    @ObservationIgnored private var pressedAppSwitcherAction: AppSwitcherAction?
     @ObservationIgnored private var isAppSwitcherPresented = false
     @ObservationIgnored var chromeActionHandler: ((UUID, WindowChromeAction) -> Void)?
     @ObservationIgnored var dashboardActionHandler: ((UUID) -> Void)?
@@ -334,7 +409,7 @@ final class InputRouter {
     @ObservationIgnored var voiceAssistantDismissHandler: (() -> Void)?
     @ObservationIgnored var statusBarActionHandler: ((StatusBarAction) -> Void)?
     @ObservationIgnored var dockActionHandler: ((DockAction) -> Void)?
-    @ObservationIgnored var appSwitcherActionHandler: ((UUID) -> Void)?
+    @ObservationIgnored var appSwitcherActionHandler: ((AppSwitcherAction) -> Void)?
     @ObservationIgnored var windowFocusHandler: ((UUID) -> Void)?
     @ObservationIgnored var panelFocusHandler: ((UUID, SpatialPanelID) -> Void)?
     @ObservationIgnored var pointerHoverHandler: (() -> Void)?
@@ -359,6 +434,9 @@ final class InputRouter {
         activePanels.removeValue(forKey: windowID)
         windowLayouts.removeValue(forKey: windowID)
         pressedRegions.removeValue(forKey: windowID)
+        if activeResizeWindowID == windowID {
+            endWindowResize()
+        }
         if pressedWindowID == windowID {
             pressedWindowID = nil
         }
@@ -375,6 +453,9 @@ final class InputRouter {
     func removeWindowLayout(for windowID: UUID) {
         windowLayouts.removeValue(forKey: windowID)
         pressedRegions.removeValue(forKey: windowID)
+        if activeResizeWindowID == windowID {
+            endWindowResize()
+        }
         if pressedWindowID == windowID {
             pressedWindowID = nil
         }
@@ -414,6 +495,30 @@ final class InputRouter {
     func chromeRegion(in windowID: UUID?) -> WindowChromeRegion {
         guard let windowID, let registration = windowLayouts[windowID] else { return .surface }
         return registration.layout.region(at: cursor)
+    }
+
+    func resizeHover(in windowID: UUID?) -> WindowResizeHover? {
+        guard let windowID, let registration = windowLayouts[windowID] else { return nil }
+        return registration.layout.resizeHover(at: cursor)
+    }
+
+    func beginWindowResize(in windowID: UUID) -> WindowResizeHover? {
+        guard let hover = resizeHover(in: windowID) else { return nil }
+        activeResizeWindowID = windowID
+        activeResizeHover = hover
+        return hover
+    }
+
+    func endWindowResize() {
+        activeResizeWindowID = nil
+        activeResizeHover = nil
+    }
+
+    func resizeIndicator(in windowID: UUID) -> WindowResizeHover? {
+        if activeResizeWindowID == windowID {
+            return activeResizeHover
+        }
+        return resizeHover(in: windowID)
     }
 
     func window(at normalizedPosition: CGPoint? = nil) -> UUID? {
@@ -512,10 +617,10 @@ final class InputRouter {
         isAppSwitcherPresented = isPresented
         guard !isPresented else { return }
         appSwitcherHitFrames = [:]
-        pressedAppSwitcherWindowID = nil
+        pressedAppSwitcherAction = nil
     }
 
-    func updateAppSwitcherHitFrames(_ frames: [UUID: CGRect], in canvasSize: CGSize) {
+    func updateAppSwitcherHitFrames(_ frames: [AppSwitcherAction: CGRect], in canvasSize: CGSize) {
         let width = max(canvasSize.width, 1)
         let height = max(canvasSize.height, 1)
         appSwitcherHitFrames = frames.mapValues { frame in
@@ -551,8 +656,17 @@ final class InputRouter {
     }
 
     func appSwitcherItem(at normalizedPosition: CGPoint? = nil) -> UUID? {
+        appSwitcherAction(at: normalizedPosition)?.windowID
+    }
+
+    func appSwitcherAction(at normalizedPosition: CGPoint? = nil) -> AppSwitcherAction? {
         let point = normalizedPosition ?? cursor
-        return appSwitcherHitFrames.first(where: { $0.value.contains(point) })?.key
+        return appSwitcherHitFrames
+            .filter { $0.value.contains(point) }
+            .max { lhs, rhs in
+                lhs.key.hitTestPriority < rhs.key.hitTestPriority
+            }?
+            .key
     }
 
     func isVoiceAssistantDismissControl(at normalizedPosition: CGPoint? = nil) -> Bool {
@@ -580,6 +694,8 @@ final class InputRouter {
         cursor = newPosition
         if didMove {
             pointerDidMove(in: windowID)
+        } else if delta.dx != 0 || delta.dy != 0 {
+            revealCursor()
         }
         guard !isAppSwitcherPresented, dispatchesToSurface else { return }
         dispatchPointerMove(to: windowID)
@@ -594,6 +710,8 @@ final class InputRouter {
         cursor = newPosition
         if didMove {
             pointerDidMove(in: windowID)
+        } else {
+            revealCursor()
         }
         guard !isAppSwitcherPresented else { return }
         dispatchPointerMove(to: windowID)
@@ -612,7 +730,7 @@ final class InputRouter {
             return
         }
         if isAppSwitcherPresented {
-            pressedAppSwitcherWindowID = appSwitcherItem()
+            pressedAppSwitcherAction = appSwitcherAction()
             return
         }
         if let dockAction = dockAction() {
@@ -665,10 +783,10 @@ final class InputRouter {
             return
         }
         if isAppSwitcherPresented {
-            let pressedWindowID = pressedAppSwitcherWindowID
-            pressedAppSwitcherWindowID = nil
-            if let pressedWindowID, appSwitcherItem() == pressedWindowID {
-                appSwitcherActionHandler?(pressedWindowID)
+            let pressedAction = pressedAppSwitcherAction
+            pressedAppSwitcherAction = nil
+            if let pressedAction, appSwitcherAction() == pressedAction {
+                appSwitcherActionHandler?(pressedAction)
             }
             return
         }
@@ -746,13 +864,52 @@ final class InputRouter {
         dispatchToActivePanelOrWindow(.scroll(normalizedDelta: delta), windowID: windowID)
     }
 
+    func magnify(by scaleDelta: CGFloat, in windowID: UUID?) {
+        guard !isAppSwitcherPresented,
+              scaleDelta.isFinite,
+              scaleDelta > 0,
+              let windowID else { return }
+        let position: CGPoint
+        if let panelID = activePanels[windowID] {
+            let surfaceID = SpatialPanelSurfaceID(windowID: windowID, panelID: panelID)
+            position = panelPosition(for: surfaceID, clamped: true)
+            dispatch(
+                .magnify(scaleDelta: scaleDelta, normalizedPosition: position),
+                to: surfaceID
+            )
+        } else {
+            position = surfacePosition(in: windowID, clamped: true)
+            dispatch(
+                .magnify(scaleDelta: scaleDelta, normalizedPosition: position),
+                to: windowID
+            )
+        }
+    }
+
     func insertText(_ text: String, in windowID: UUID?) {
         guard !isAppSwitcherPresented, !text.isEmpty else { return }
         dispatchToActivePanelOrWindow(.insertText(text), windowID: windowID)
     }
 
-    func requestTextInputFocus() {
+    func replaceTextInput(_ text: String, in windowID: UUID?) {
+        guard !isAppSwitcherPresented else { return }
+        textInputDraft = text
+        dispatchToActivePanelOrWindow(.replaceText(text), windowID: windowID)
+    }
+
+    func submitTextInput(_ text: String, in windowID: UUID?) {
+        guard !isAppSwitcherPresented else { return }
+        textInputDraft = text
+        dispatchToActivePanelOrWindow(.submitText(text), windowID: windowID)
+    }
+
+    func requestTextInputFocus(initialText: String = "") {
+        textInputDraft = initialText
         textInputFocusRequest = UUID()
+    }
+
+    func clearTextInputDraft() {
+        textInputDraft = ""
     }
 
     func back(in windowID: UUID?) {
@@ -792,7 +949,7 @@ final class InputRouter {
             return .voiceAssistantDismiss
         }
         if isAppSwitcherPresented {
-            return appSwitcherItem().map(PointerHoverTarget.appSwitcher)
+            return appSwitcherAction().map(PointerHoverTarget.appSwitcher)
         }
         if let action = dockAction() {
             return .dock(action)

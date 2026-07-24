@@ -26,6 +26,10 @@
 	<array>
 		<string>_extend-reality._tcp.</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>ExtendReality uses the selected camera for private on-device hand controls.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ExtendReality sends display streams to your iPhone on the local network.</string>
 	<key>NSMotionUsageDescription</key>

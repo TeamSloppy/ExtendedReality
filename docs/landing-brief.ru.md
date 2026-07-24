@@ -269,7 +269,7 @@ Hero visual: тёмная 16:9 сцена поля зрения очков, в �
 - Текущий сетевой Mac MVP использует локальный HTTP/MJPEG и предназначен для доверенной сети; нельзя заявлять end-to-end encryption или безопасный доступ через интернет.
 - Выбор одного Mac-приложения пока не означает удалённый ввод непосредственно в это приложение.
 - Виртуальные системные мониторы не создаются; multi-display работает с существующими физическими дисплеями.
-- YouTube download и offline cache не реализованы. Поиск требует API key; воспроизведение по URL/video ID — нет.
+- YouTube download и offline cache не реализованы. Поиск, подписки, понравившиеся видео и библиотека работают после Google OAuth с read-only YouTube scope; API key не используется.
 - Sloppy Voice требует отдельного сервиса и настройки.
 - Direct Mode и USB IMU XREAL следует маркировать экспериментальными до завершения аппаратной валидации.
 - Нельзя писать «works with all AR glasses»; корректно — «совместимые USB-C display glasses», с перечислением реально протестированных моделей.
@@ -343,4 +343,3 @@ ExtendReality — нативная Apple-экосистема, которая п
 - `docs/pwa-host.md` — PWA Host API v3 и security boundary.
 - `docs/mac-application-sharing.md` — захват отдельного Mac-приложения и текущие ограничения.
 - `ExtendRealityPWAStudio/` — developer preview и runtime inspector.
-

@@ -48,7 +48,7 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertEqual(persistence.load(), expectedState)
     }
 
-    func testRestoredWorkspaceStartsOnDashboardWithoutLosingWindows() throws {
+    func testRestoredWorkspaceStartsWithDashboardOverWidgetsWithoutLosingWindows() throws {
         let schema = Schema([WorkspaceSnapshot.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -65,18 +65,21 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertNil(store.activeWindowID)
         XCTAssertEqual(store.windows.count, 1)
         XCTAssertTrue(try XCTUnwrap(store.windows.first).isMinimized)
-        XCTAssertEqual(store.presentationMode, .dashboard)
+        XCTAssertEqual(store.presentationMode, .widgets)
+        XCTAssertTrue(store.isDashboardPresented)
     }
 
-    func testEmptyWorkspaceRemainsOnDashboard() throws {
+    func testEmptyWorkspaceStartsWithDashboardOverWidgets() throws {
         let schema = Schema([WorkspaceSnapshot.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
 
-        XCTAssertEqual(store.presentationMode, .dashboard)
-        XCTAssertFalse(store.dismissDashboard())
-        XCTAssertEqual(store.presentationMode, .dashboard)
+        XCTAssertEqual(store.presentationMode, .widgets)
+        XCTAssertTrue(store.isDashboardPresented)
+        XCTAssertTrue(store.dismissDashboard())
+        XCTAssertEqual(store.presentationMode, .widgets)
+        XCTAssertFalse(store.isDashboardPresented)
     }
 
     func testAppSwitcherSelectionRestoresFocusAndCentersWindow() throws {
@@ -118,25 +121,45 @@ final class WorkspacePersistenceTests: XCTestCase {
         let gallery = store.addWindow(kind: .gallery)
 
         store.showDashboard()
+        XCTAssertTrue(store.isDashboardPresented)
         let restored = store.dismissDashboard()
 
         XCTAssertTrue(restored)
         XCTAssertEqual(store.activeWindowID, gallery.id)
-        XCTAssertEqual(store.presentationMode, .workspace)
+        XCTAssertEqual(store.presentationMode, .windows)
+        XCTAssertFalse(store.isDashboardPresented)
         XCTAssertFalse(try XCTUnwrap(store.windows.first(where: { $0.id == gallery.id })).isMinimized)
         XCTAssertFalse(try XCTUnwrap(store.windows.first(where: { $0.id == browser.id })).isMinimized)
         XCTAssertFalse(store.isAppSwitcherPresented)
     }
 
-    func testDockOpensOverDashboardWithoutSwitchingPresentationMode() throws {
+    func testDashboardOverlayDoesNotSwitchBaseMode() throws {
         let schema = Schema([WorkspaceSnapshot.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
-        store.showDock()
+        XCTAssertEqual(store.presentationMode, .widgets)
+        _ = store.dismissDashboard()
+        store.showDashboard()
+        XCTAssertEqual(store.presentationMode, .widgets)
+        XCTAssertTrue(store.isDashboardPresented)
+    }
 
-        XCTAssertTrue(store.isDockPresented)
-        XCTAssertEqual(store.presentationMode, .dashboard)
+    func testVerticalModesDismissDashboardInsteadOfIncludingItInModeOrder() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+
+        XCTAssertTrue(store.isDashboardPresented)
+        store.showWindows()
+        XCTAssertEqual(store.presentationMode, .windows)
+        XCTAssertFalse(store.isDashboardPresented)
+
+        store.showDashboard()
+        store.showWidgets()
+        XCTAssertEqual(store.presentationMode, .widgets)
+        XCTAssertFalse(store.isDashboardPresented)
     }
 
     func testAddingWindowFromDockPreservesExistingWindowPlacement() throws {
@@ -147,18 +170,15 @@ final class WorkspacePersistenceTests: XCTestCase {
         let existing = store.addWindow(kind: .browser)
         store.moveWindow(existing.id, normalizedDelta: CGVector(dx: 0.35, dy: -0.2))
         let placement = try XCTUnwrap(store.activeWindow).appTransform
-        store.showDock()
-
         let added = store.addWindow(kind: .gallery)
 
         let preserved = try XCTUnwrap(store.windows.first(where: { $0.id == existing.id }))
         XCTAssertEqual(preserved.appTransform, placement)
         XCTAssertFalse(preserved.isMinimized)
         XCTAssertEqual(store.activeWindowID, added.id)
-        XCTAssertFalse(store.isDockPresented)
     }
 
-    func testDockLauncherAddsNewWindowThroughInputRouter() throws {
+    func testDockFocusesAnExistingWindowThroughInputRouter() throws {
         let environment = AppEnvironment.preview(windowCount: 1)
         let existing = try XCTUnwrap(environment.workspace.windows.first)
         environment.workspace.moveWindow(
@@ -166,15 +186,10 @@ final class WorkspacePersistenceTests: XCTestCase {
             normalizedDelta: CGVector(dx: 0.3, dy: -0.15)
         )
         let existingPlacement = try XCTUnwrap(environment.workspace.activeWindow).appTransform
-        let browserLauncher = try XCTUnwrap(
-            environment.dashboard.launchers.first(where: {
-                $0.content == .app(.browser)
-            })
-        )
+        environment.workspace.toggleMinimize(existing.id)
         let canvasSize = CGSize(width: 1_000, height: 1_000)
-        environment.workspace.showDock()
         environment.inputRouter.updateDockHitFrames(
-            [.launch(browserLauncher.id): CGRect(x: 400, y: 400, width: 200, height: 200)],
+            [.focus(existing.id): CGRect(x: 400, y: 400, width: 200, height: 200)],
             in: canvasSize
         )
 
@@ -182,31 +197,71 @@ final class WorkspacePersistenceTests: XCTestCase {
         environment.inputRouter.pointerDown(in: existing.id)
         environment.inputRouter.pointerUp(in: existing.id)
 
-        XCTAssertEqual(environment.workspace.windows.count, 2)
+        XCTAssertEqual(environment.workspace.windows.count, 1)
         let preserved = try XCTUnwrap(
             environment.workspace.windows.first(where: { $0.id == existing.id })
         )
         XCTAssertEqual(preserved.appTransform, existingPlacement)
         XCTAssertFalse(preserved.isMinimized)
         XCTAssertEqual(environment.workspace.activeWindow?.source, .initial(for: .browser))
-        XCTAssertFalse(environment.workspace.isDockPresented)
+        XCTAssertEqual(environment.workspace.activeWindowID, existing.id)
     }
 
-    func testDashboardDismissesDock() throws {
+    func testOpeningAnExistingPWAReusesAndRestoresItsWindow() throws {
+        let environment = AppEnvironment.preview(windowCount: 0)
+        let installation = PWAInstallation(
+            manifest: PWAAppManifest(
+                id: "com.example.notes",
+                name: "Notes",
+                summary: "Offline notes",
+                developer: "Example",
+                version: "1.0.0",
+                launchURL: URL(string: "https://notes.example.com")!,
+                universalLink: URL(string: "https://notes.example.com/app")!,
+                allowedOrigins: ["https://notes.example.com"],
+                displayModes: [.window, .widget],
+                requestedCapabilities: [],
+                minimumAge: 4,
+                accentHex: "#2563EB"
+            ),
+            installedAt: .now,
+            dataStoreIdentifier: UUID(),
+            grantedCapabilities: []
+        )
+        let first = environment.openPWA(installation, displayMode: .window)
+        environment.workspace.moveWindow(
+            first.id,
+            normalizedDelta: CGVector(dx: 0.3, dy: -0.15)
+        )
+        let originalTransform = try XCTUnwrap(environment.workspace.activeWindow).appTransform
+        environment.workspace.toggleMinimize(first.id)
+
+        let reopened = environment.openPWA(installation, displayMode: .widget)
+
+        XCTAssertEqual(reopened.id, first.id)
+        XCTAssertEqual(environment.workspace.windows.count, 1)
+        XCTAssertEqual(environment.workspace.activeWindowID, first.id)
+        XCTAssertFalse(try XCTUnwrap(environment.workspace.activeWindow).isMinimized)
+        XCTAssertEqual(environment.workspace.activeWindow?.appTransform, originalTransform)
+        XCTAssertEqual(
+            environment.workspace.activeWindow?.source,
+            .pwa(installation, displayMode: .window)
+        )
+    }
+
+    func testDashboardDoesNotSwitchWindowsMode() throws {
         let schema = Schema([WorkspaceSnapshot.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
         _ = store.addWindow(kind: .browser)
-        store.showDock()
-
         store.showDashboard()
 
-        XCTAssertFalse(store.isDockPresented)
-        XCTAssertEqual(store.presentationMode, .dashboard)
+        XCTAssertEqual(store.presentationMode, .windows)
+        XCTAssertTrue(store.isDashboardPresented)
     }
 
-    func testDismissDashboardRestoresMostRecentWindowWhenAllAreMinimized() throws {
+    func testDismissDashboardKeepsUnderlyingWidgetsModeWhenAllWindowsAreMinimized() throws {
         let schema = Schema([WorkspaceSnapshot.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -216,11 +271,13 @@ final class WorkspacePersistenceTests: XCTestCase {
         store.toggleMinimize(browser.id)
         store.toggleMinimize(gallery.id)
 
-        XCTAssertEqual(store.presentationMode, .dashboard)
+        XCTAssertEqual(store.presentationMode, .widgets)
+        store.showDashboard()
         XCTAssertTrue(store.dismissDashboard())
-        XCTAssertEqual(store.activeWindowID, gallery.id)
-        XCTAssertFalse(try XCTUnwrap(store.windows.first(where: { $0.id == gallery.id })).isMinimized)
-        XCTAssertEqual(store.presentationMode, .workspace)
+        XCTAssertNil(store.activeWindowID)
+        XCTAssertTrue(try XCTUnwrap(store.windows.first(where: { $0.id == gallery.id })).isMinimized)
+        XCTAssertEqual(store.presentationMode, .widgets)
+        XCTAssertFalse(store.isDashboardPresented)
     }
 
     func testWindowCanMoveCloserAndFartherWithinLimits() throws {
@@ -587,6 +644,21 @@ final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertEqual(client.layout?.panels.count, 4)
         store.moveWindow(window.id, normalizedDelta: CGVector(dx: 0.25, dy: -0.2))
         XCTAssertEqual(client.layout?.panels.count, 4)
+    }
+
+    func testYouTubeStartsCompactAndCanExpandAfterAuthorization() throws {
+        let schema = Schema([WorkspaceSnapshot.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let store = WorkspaceStore(persistence: WorkspacePersistence(container: container))
+        let window = store.addWindow(kind: .youtube)
+
+        XCTAssertEqual(store.layout(for: window.id), .youtubeCompact)
+        XCTAssertEqual(store.layout(for: window.id)?.panels.count, 1)
+
+        try store.setLayout(.youtube, for: window.id)
+
+        XCTAssertEqual(store.layout(for: window.id)?.panels.count, 4)
     }
 
     private func makePersistence(

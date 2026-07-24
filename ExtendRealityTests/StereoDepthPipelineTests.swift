@@ -28,6 +28,36 @@ final class StereoDepthSettingsTests: XCTestCase {
         XCTAssertEqual(frames.right, CGRect(x: 1_920, y: 0, width: 1_920, height: 1_080))
         XCTAssertFalse(StereoDisplayGeometry.isFullSideBySide(CGSize(width: 1_920, height: 1_080)))
     }
+
+    func testVideoFrameRotationFollowsTrackPreferredTransform() {
+        XCTAssertEqual(
+            VideoFrameRotation(preferredTransform: .identity),
+            .none
+        )
+        XCTAssertEqual(
+            VideoFrameRotation(
+                preferredTransform: CGAffineTransform(
+                    translationX: 1_920,
+                    y: 0
+                ).rotated(by: .pi / 2)
+            ),
+            .clockwise90
+        )
+        XCTAssertEqual(
+            VideoFrameRotation(
+                preferredTransform: CGAffineTransform(rotationAngle: -.pi / 2)
+            ),
+            .counterclockwise90
+        )
+        XCTAssertEqual(
+            VideoFrameRotation(
+                preferredTransform: CGAffineTransform(rotationAngle: .pi)
+            ),
+            .halfTurn
+        )
+        XCTAssertTrue(VideoFrameRotation.clockwise90.swapsDimensions)
+        XCTAssertFalse(VideoFrameRotation.halfTurn.swapsDimensions)
+    }
 }
 
 final class StereoDepthMathTests: XCTestCase {

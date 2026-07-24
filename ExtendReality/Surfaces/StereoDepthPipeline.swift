@@ -82,6 +82,40 @@ struct StereoVideoFrame {
     let itemTime: CMTime
 }
 
+enum VideoFrameRotation: UInt32, Equatable, Sendable {
+    case none = 0
+    case clockwise90 = 1
+    case halfTurn = 2
+    case counterclockwise90 = 3
+
+    init(preferredTransform transform: CGAffineTransform) {
+        let quarterTurns = Int((atan2(transform.b, transform.a) / (.pi / 2)).rounded())
+        switch (quarterTurns % 4 + 4) % 4 {
+        case 1: self = .clockwise90
+        case 2: self = .halfTurn
+        case 3: self = .counterclockwise90
+        default: self = .none
+        }
+    }
+
+    var swapsDimensions: Bool {
+        self == .clockwise90 || self == .counterclockwise90
+    }
+}
+
+enum SDRVideoOutputSettings {
+    static var pixelBufferAttributes: [String: Any] {
+        [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVImageBufferYCbCrMatrixKey as String: kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+            kCVImageBufferColorPrimariesKey as String: kCVImageBufferColorPrimaries_ITU_R_709_2,
+            kCVImageBufferTransferFunctionKey as String:
+                kCVImageBufferTransferFunction_ITU_R_709_2,
+        ]
+    }
+}
+
 @MainActor
 protocol StereoFrameSource: AnyObject {
     func copyFrame(forHostTime hostTime: CFTimeInterval) -> StereoVideoFrame?
@@ -92,14 +126,9 @@ final class AVPlayerStereoFrameSource: StereoFrameSource {
     let output: AVPlayerItemVideoOutput
 
     init(item: AVPlayerItem) {
-        output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-            kCVImageBufferYCbCrMatrixKey as String: kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-            kCVImageBufferColorPrimariesKey as String: kCVImageBufferColorPrimaries_ITU_R_709_2,
-            kCVImageBufferTransferFunctionKey as String:
-                kCVImageBufferTransferFunction_ITU_R_709_2,
-        ])
+        output = AVPlayerItemVideoOutput(
+            pixelBufferAttributes: SDRVideoOutputSettings.pixelBufferAttributes
+        )
         item.add(output)
     }
 

@@ -65,7 +65,7 @@ final class YouTubeSessionStateTests: XCTestCase {
         let session = YouTubeSession(
             initialVideoID: nil,
             loadsContent: false,
-            textInputFocusHandler: { focusRequestCount += 1 }
+            textInputFocusHandler: { _ in focusRequestCount += 1 }
         )
 
         session.handle(

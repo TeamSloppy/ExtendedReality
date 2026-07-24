@@ -15,6 +15,24 @@ struct DashboardEditorView: View {
         NavigationStack {
             List {
                 Section {
+                    Picker(
+                        "Scenario",
+                        selection: Binding(
+                            get: { dashboard.activeScenario },
+                            set: { dashboard.selectScenario($0) }
+                        )
+                    ) {
+                        ForEach(DashboardScenario.allCases) { scenario in
+                            Label(scenario.title, systemImage: scenario.systemImage)
+                                .tag(scenario)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text("Each scenario keeps its own widgets, positions, and sizes.")
+                }
+
+                Section {
                     ForEach(dashboard.items) { item in
                         DashboardEditorRow(item: item)
                     }
@@ -43,6 +61,7 @@ struct DashboardEditorView: View {
                             Button(kind.title, systemImage: kind.systemImage) {
                                 dashboard.addWidget(kind)
                             }
+                            .disabled(dashboard.containsWidget(kind))
                         }
                     }
                 }
@@ -141,6 +160,7 @@ private struct DashboardEditorRow: View {
         case .bookmark(let bookmark): bookmark.accent.swiftUIColor
         case .widget(.calendar), .widget(.focus): .orange
         case .widget(.health): .pink
+        case .widget(.translation): .cyan
         }
     }
 }

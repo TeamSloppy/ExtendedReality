@@ -89,6 +89,7 @@ final class ControllerViewController: UIViewController {
             .environment(environment.inputRouter)
             .environment(environment.headPose)
             .environment(environment.systemData)
+            .environment(environment.youtubeAuth)
             .environment(environment.voiceAssistant)
             .environment(environment.voiceAssistantSettings)
             .environment(environment.wakeWordController)

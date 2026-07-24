@@ -12,30 +12,6 @@ enum DashboardAccent: String, Codable, CaseIterable, Sendable {
     case pink
 }
 
-enum DashboardWidgetKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case calendar
-    case health
-    case focus
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .calendar: "Calendar"
-        case .health: "Health"
-        case .focus: "Focus"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .calendar: "calendar"
-        case .health: "heart.fill"
-        case .focus: "timer"
-        }
-    }
-}
-
 struct DashboardBookmark: Codable, Equatable, Sendable {
     var title: String
     var url: String
@@ -80,6 +56,12 @@ struct DashboardItem: Identifiable, Codable, Equatable, Sendable {
             forKey: .placement
         ) ?? .unplaced
     }
+}
+
+private struct DashboardPersistentState: Codable {
+    var activeScenario: DashboardScenario
+    var launchers: [DashboardItem]
+    var widgetsByScenario: [DashboardScenario: [DashboardItem]]
 }
 
 struct DashboardPlacement: Codable, Equatable, Sendable {
@@ -135,6 +117,7 @@ enum DashboardLayout {
             case .health: center = (0.18, 0.34)
             case .calendar: center = (0.82, 0.34)
             case .focus: center = (0.50, 0.52)
+            case .translation: center = (0.50, 0.76)
             }
             return DashboardPlacement(x: center.0, y: center.1, scale: 1, zIndex: itemIndex)
         case .app, .pwa, .bookmark:
@@ -209,16 +192,77 @@ enum DashboardProjection {
     }
 }
 
+enum DashboardApplicationProjection {
+    static let baseItemSize = CGSize(width: 176, height: 196)
+    static let maximumColumnCount = 5
+
+    static func presentations(
+        for items: [DashboardItem],
+        in canvasSize: CGSize
+    ) -> [DashboardItemPresentation] {
+        guard !items.isEmpty else { return [] }
+
+        let columnCount = min(maximumColumnCount, items.count)
+        let rowCount = Int(ceil(Double(items.count) / Double(columnCount)))
+        let referenceScale = min(
+            canvasSize.width / DashboardLayout.referenceWidth,
+            canvasSize.height / DashboardLayout.referenceHeight
+        )
+        let itemSize = CGSize(
+            width: baseItemSize.width * referenceScale,
+            height: baseItemSize.height * referenceScale
+        )
+
+        return items.enumerated().map { index, sourceItem in
+            let row = index / columnCount
+            let itemsInRow = min(columnCount, items.count - row * columnCount)
+            let column = index % columnCount
+            let horizontalSpacing = min(0.14, 0.64 / Double(max(itemsInRow - 1, 1)))
+            let rowWidth = horizontalSpacing * Double(itemsInRow - 1)
+            let x = 0.5 - rowWidth / 2 + Double(column) * horizontalSpacing
+            let baseY: Double
+            switch rowCount {
+            case 1:
+                baseY = 0.57
+            case 2:
+                baseY = 0.48 + Double(row) * 0.24
+            case 3:
+                baseY = 0.43 + Double(row) * 0.20
+            default:
+                baseY = 0.40 + Double(row) * (0.48 / Double(rowCount - 1))
+            }
+
+            var item = sourceItem
+            item.placement.zIndex = index
+            return DashboardItemPresentation(
+                item: item,
+                center: CGPoint(
+                    x: CGFloat(x) * canvasSize.width,
+                    y: CGFloat(baseY.clamped(to: 0.38 ... 0.88)) * canvasSize.height
+                ),
+                size: itemSize,
+                rotationDegrees: 0
+            )
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class DashboardStore {
     private(set) var items: [DashboardItem]
     private(set) var selectedItemID: UUID?
     private(set) var focusEndDate: Date?
+    private(set) var activeScenario: DashboardScenario
+    private(set) var isWidgetPickerPresented = false
+    private(set) var isScenarioPickerPresented = false
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let storageKey: String
+    @ObservationIgnored private let stateStorageKey: String
     @ObservationIgnored private let mapsLauncherMigrationKey: String
+    @ObservationIgnored private let translationWidgetMigrationKey: String
+    @ObservationIgnored private var widgetsByScenario: [DashboardScenario: [DashboardItem]]
     @ObservationIgnored private let encoder = JSONEncoder()
     @ObservationIgnored private let decoder = JSONDecoder()
 
@@ -228,15 +272,28 @@ final class DashboardStore {
     ) {
         self.defaults = defaults
         self.storageKey = storageKey
+        stateStorageKey = "\(storageKey).scenarios.v2"
         mapsLauncherMigrationKey = "\(storageKey).mapsLauncher.v1"
-        if let data = defaults.data(forKey: storageKey),
-           let restored = try? decoder.decode([DashboardItem].self, from: data) {
+        translationWidgetMigrationKey = "\(storageKey).translationWidget.v1"
+        if let data = defaults.data(forKey: stateStorageKey),
+           let restored = try? decoder.decode(DashboardPersistentState.self, from: data) {
+            activeScenario = restored.activeScenario
+            widgetsByScenario = restored.widgetsByScenario
+            items = restored.launchers + (restored.widgetsByScenario[restored.activeScenario] ?? [])
+        } else if let data = defaults.data(forKey: storageKey),
+                  let restored = try? decoder.decode([DashboardItem].self, from: data) {
+            activeScenario = .work
+            widgetsByScenario = Self.defaultWidgetsByScenario
+            widgetsByScenario[.work] = restored.filter(\.content.isWidget)
             items = restored
         } else {
+            activeScenario = .work
+            widgetsByScenario = Self.defaultWidgetsByScenario
             items = Self.defaultItems
         }
         let addedMapsLauncher = addMapsLauncherIfNeeded()
-        if normalizePlacements() || addedMapsLauncher {
+        let addedTranslationWidget = addTranslationWidgetIfNeeded()
+        if normalizePlacements() || addedMapsLauncher || addedTranslationWidget {
             save()
         }
     }
@@ -250,11 +307,24 @@ final class DashboardStore {
         }
     }
 
+    var applications: [DashboardItem] {
+        items.filter {
+            switch $0.content {
+            case .app, .pwa: true
+            case .bookmark, .widget: false
+            }
+        }
+    }
+
     var widgets: [DashboardItem] {
         items.filter {
             if case .widget = $0.content { return true }
             return false
         }
+    }
+
+    func containsWidget(_ kind: DashboardWidgetKind) -> Bool {
+        widgets.contains(where: { $0.content == .widget(kind) })
     }
 
     func item(id: UUID) -> DashboardItem? {
@@ -329,6 +399,50 @@ final class DashboardStore {
         save()
     }
 
+    func toggleWidget(_ kind: DashboardWidgetKind) {
+        if let index = items.firstIndex(where: { $0.content == .widget(kind) }) {
+            remove(at: IndexSet(integer: index))
+        } else {
+            addWidget(kind)
+        }
+    }
+
+    func toggleWidgetPicker() {
+        isWidgetPickerPresented.toggle()
+        isScenarioPickerPresented = false
+        clearSelection()
+    }
+
+    func dismissWidgetPicker() {
+        isWidgetPickerPresented = false
+    }
+
+    func toggleScenarioPicker() {
+        isScenarioPickerPresented.toggle()
+        isWidgetPickerPresented = false
+        clearSelection()
+    }
+
+    func dismissScenarioPicker() {
+        isScenarioPickerPresented = false
+    }
+
+    func selectScenario(_ scenario: DashboardScenario) {
+        guard scenario != activeScenario else {
+            isScenarioPickerPresented = false
+            return
+        }
+        syncActiveScenarioWidgets()
+        let launchers = self.launchers
+        activeScenario = scenario
+        items = launchers + (widgetsByScenario[scenario] ?? [])
+        _ = normalizePlacements()
+        selectedItemID = nil
+        isWidgetPickerPresented = false
+        isScenarioPickerPresented = false
+        save()
+    }
+
     func remove(at offsets: IndexSet) {
         let removedIDs = Set(offsets.compactMap { items.indices.contains($0) ? items[$0].id : nil })
         items.remove(atOffsets: offsets)
@@ -374,9 +488,13 @@ final class DashboardStore {
     }
 
     func reset() {
+        activeScenario = .work
+        widgetsByScenario = Self.defaultWidgetsByScenario
         items = Self.defaultItems
         _ = normalizePlacements()
         selectedItemID = nil
+        isWidgetPickerPresented = false
+        isScenarioPickerPresented = false
         save()
     }
 
@@ -411,8 +529,17 @@ final class DashboardStore {
     }
 
     private func save() {
-        guard let data = try? encoder.encode(items) else { return }
-        defaults.set(data, forKey: storageKey)
+        syncActiveScenarioWidgets()
+        guard let legacyData = try? encoder.encode(items),
+              let stateData = try? encoder.encode(
+                DashboardPersistentState(
+                    activeScenario: activeScenario,
+                    launchers: launchers,
+                    widgetsByScenario: widgetsByScenario
+                )
+              ) else { return }
+        defaults.set(legacyData, forKey: storageKey)
+        defaults.set(stateData, forKey: stateStorageKey)
     }
 
     @discardableResult
@@ -422,6 +549,24 @@ final class DashboardStore {
         guard !items.contains(where: { $0.content == .app(.maps) }) else { return false }
         items.append(DashboardItem(content: .app(.maps)))
         return true
+    }
+
+    @discardableResult
+    private func addTranslationWidgetIfNeeded() -> Bool {
+        guard !defaults.bool(forKey: translationWidgetMigrationKey) else { return false }
+        defaults.set(true, forKey: translationWidgetMigrationKey)
+        var workWidgets = activeScenario == .work ? widgets : (widgetsByScenario[.work] ?? [])
+        guard !workWidgets.contains(where: { $0.content == .widget(.translation) }) else { return false }
+        workWidgets.append(DashboardItem(content: .widget(.translation)))
+        widgetsByScenario[.work] = workWidgets
+        if activeScenario == .work {
+            items = launchers + workWidgets
+        }
+        return true
+    }
+
+    private func syncActiveScenarioWidgets() {
+        widgetsByScenario[activeScenario] = widgets
     }
 
     @discardableResult
@@ -453,6 +598,10 @@ final class DashboardStore {
     }
 
     private static var defaultItems: [DashboardItem] {
+        defaultLaunchers + (defaultWidgetsByScenario[.work] ?? [])
+    }
+
+    private static var defaultLaunchers: [DashboardItem] {
         [
             DashboardItem(content: .app(.gallery)),
             DashboardItem(content: .app(.browser)),
@@ -479,9 +628,32 @@ final class DashboardStore {
                     DashboardBookmark(title: "Twitch", url: "https://www.twitch.tv", monogram: "T", accent: .purple)
                 )
             ),
-            DashboardItem(content: .widget(.calendar)),
-            DashboardItem(content: .widget(.health)),
-            DashboardItem(content: .widget(.focus)),
         ]
+    }
+
+    private static var defaultWidgetsByScenario: [DashboardScenario: [DashboardItem]] {
+        [
+            .work: [
+                DashboardItem(content: .widget(.calendar)),
+                DashboardItem(content: .widget(.health)),
+                DashboardItem(content: .widget(.focus)),
+                DashboardItem(content: .widget(.translation)),
+            ],
+            .personal: [
+                DashboardItem(content: .widget(.calendar)),
+                DashboardItem(content: .widget(.health)),
+            ],
+            .travel: [
+                DashboardItem(content: .widget(.calendar)),
+                DashboardItem(content: .widget(.translation)),
+            ],
+        ]
+    }
+}
+
+private extension DashboardItemContent {
+    var isWidget: Bool {
+        if case .widget = self { return true }
+        return false
     }
 }

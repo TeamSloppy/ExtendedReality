@@ -13,7 +13,7 @@ struct WatchControlView: View {
                 if let playback = controller.activePlayback {
                     playbackControls(playback)
                 } else {
-                    pointerButton
+                    pointerControl
                     clickButton
                 }
                 actionRow
@@ -54,7 +54,37 @@ struct WatchControlView: View {
                     }
                     .accessibilityLabel("Apps and windows")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    pointerModeButton
+                }
             }
+        }
+    }
+
+    private var pointerModeButton: some View {
+        Button {
+            controller.pointerInputMode = controller.pointerInputMode == .wrist
+                ? .trackpad
+                : .wrist
+        } label: {
+            Image(systemName: controller.pointerInputMode.systemImage)
+        }
+        .accessibilityLabel("Pointer input")
+        .accessibilityValue(controller.pointerInputMode.title)
+        .accessibilityHint(
+            controller.pointerInputMode == .wrist
+                ? "Switch to trackpad"
+                : "Switch to wrist gestures"
+        )
+    }
+
+    @ViewBuilder
+    private var pointerControl: some View {
+        switch controller.pointerInputMode {
+        case .wrist:
+            pointerButton
+        case .trackpad:
+            WatchTrackpadSurface(controller: controller)
         }
     }
 
@@ -108,6 +138,8 @@ struct WatchControlView: View {
         .buttonStyle(.borderedProminent)
         .tint(.cyan)
         .disabled(!controller.isReachable || controller.activeWindow == nil)
+        .handGestureShortcut(.primaryAction, isEnabled: controller.isReachable)
+        .accessibilityHint("Tap once to click. The system Double Tap gesture also clicks.")
     }
 
     private func playbackControls(_ playback: WatchPlaybackState) -> some View {
@@ -154,9 +186,7 @@ struct WatchControlView: View {
                 Image(systemName: controller.isVoiceAssistantActive ? "stop.fill" : "microphone.fill")
             }
             .tint(controller.isVoiceAssistantActive ? .orange : .purple)
-            .handGestureShortcut(.primaryAction, isEnabled: controller.isReachable)
             .accessibilityLabel(controller.isVoiceAssistantActive ? "Stop voice assistant" : "Start voice assistant")
-            .accessibilityHint("Activated by the system Double Tap gesture")
 
             Button {
                 controller.recenter()
@@ -174,6 +204,69 @@ struct WatchControlView: View {
         }
         .buttonStyle(.bordered)
         .disabled(!controller.isReachable)
+    }
+}
+
+private struct WatchTrackpadSurface: View {
+    let controller: WatchControlModel
+    @State private var previousTranslation: CGSize?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.cyan.opacity(0.65), lineWidth: 1)
+
+                VStack(spacing: 2) {
+                    Image(systemName: "hand.draw")
+                        .font(.title3)
+                    Text("TRACKPAD")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1)
+                }
+                .foregroundStyle(.cyan)
+                .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .gesture(tapGesture)
+            .simultaneousGesture(dragGesture(in: proxy.size))
+        }
+        .frame(height: 58)
+        .disabled(!controller.isReachable || controller.activeWindow == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Trackpad")
+        .accessibilityHint("Drag to move the pointer, tap to click, or double tap to double-click")
+    }
+
+    private var tapGesture: some Gesture {
+        let doubleTap = TapGesture(count: 2)
+            .onEnded { controller.doubleClick() }
+        let singleTap = TapGesture(count: 1)
+            .onEnded { controller.click() }
+        return doubleTap.exclusively(before: singleTap)
+    }
+
+    private func dragGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                guard let previousTranslation else {
+                    previousTranslation = value.translation
+                    return
+                }
+                controller.moveTrackpad(
+                    by: CGSize(
+                        width: value.translation.width - previousTranslation.width,
+                        height: value.translation.height - previousTranslation.height
+                    ),
+                    in: size
+                )
+                self.previousTranslation = value.translation
+            }
+            .onEnded { _ in
+                previousTranslation = nil
+            }
     }
 }
 
@@ -215,6 +308,7 @@ private struct RemoteMenuView: View {
             }
 
             Section("Pointer") {
+                Toggle("Show pointer beam", isOn: Bindable(controller).showsPointerGuide)
                 Picker("Sensitivity", selection: Bindable(controller).sensitivity) {
                     Text("Low").tag(0.65)
                     Text("Normal").tag(1.0)

@@ -17,6 +17,15 @@ enum MacRuntimeConflictPolicy {
     }
 }
 
+enum DirectPointerInputMode: String, CaseIterable, Identifiable {
+    case mouse
+    case hands
+
+    var id: String { rawValue }
+    var title: String { self == .mouse ? "Mouse" : "Hands" }
+    var systemImage: String { self == .mouse ? "computermouse" : "hand.point.up.left.fill" }
+}
+
 enum DirectModeState: Equatable {
     case idle
     case loading
@@ -67,9 +76,13 @@ final class DirectModeStore {
     private(set) var windowFrames: [UUID: CGRect] = [:]
     private(set) var canvasSize: CGSize = CGSize(width: 1_920, height: 1_080)
     private(set) var inputStatus = "Pointer released"
+    private(set) var isHandPointerVisible = false
+    private(set) var isHandPinching = false
+    var pointerInputMode: DirectPointerInputMode = .mouse
 
     let workspace: WorkspaceStore
     let headPose: HeadPoseController
+    let handTracking = HandTrackingController(preferencePrefix: "ExtendRealityMac.handTracking")
 
     @ObservationIgnored private let modelContainer: ModelContainer
     @ObservationIgnored private let capture = DirectCaptureCoordinator()
@@ -110,6 +123,28 @@ final class DirectModeStore {
         windowController.onOutputUnavailable = { [weak self] in
             Task { @MainActor [weak self] in
                 await self?.stop(reason: "Output display disconnected")
+            }
+        }
+        handTracking.eventHandler = { [weak self] events, snapshot in
+            guard let self else { return }
+            self.isHandPointerVisible = snapshot.isPointerVisible
+            self.isHandPinching = snapshot.isPinching || snapshot.isTwoHandGestureActive
+            self.inputController.handleHandEvents(events)
+            self.inputStatus = self.inputController.statusText
+        }
+        handTracking.stateHandler = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .denied, .unavailable, .failed:
+                self.inputController.stopHandInput()
+                self.inputStatus = state.title
+            case .idle:
+                if self.pointerInputMode == .hands {
+                    self.inputController.stopHandInput()
+                    self.inputStatus = self.inputController.statusText
+                }
+            case .requestingPermission, .running:
+                self.inputStatus = state.title
             }
         }
     }
@@ -172,7 +207,11 @@ final class DirectModeStore {
         outputDisplays.first(where: { $0.id == selectedOutputDisplayID })
     }
 
-    var isPointerCaptured: Bool { inputController.isCapturing }
+    var isPointerCaptured: Bool { inputController.isCapturing || inputController.isHandInputActive }
+
+    var isPointerVisible: Bool {
+        inputController.isCapturing || (inputController.isHandInputActive && isHandPointerVisible)
+    }
 
     func refresh() async {
         poseProvider.activate()
@@ -256,6 +295,7 @@ final class DirectModeStore {
         catalogTask?.cancel()
         catalogTask = nil
         inputController.stop()
+        handTracking.stop()
         await capture.stop()
         frames.removeAll()
         windowController.close()
@@ -270,16 +310,48 @@ final class DirectModeStore {
     }
 
     func togglePointerCapture() {
-        if inputController.isCapturing {
-            inputController.stop()
-        } else {
-            inputController.start()
+        switch pointerInputMode {
+        case .mouse:
+            handTracking.stop()
+            if inputController.isCapturing {
+                inputController.stop()
+            } else {
+                inputController.start()
+            }
+            inputStatus = inputController.statusText
+        case .hands:
+            if inputController.isHandInputActive {
+                handTracking.stop()
+                inputController.stopHandInput()
+                isHandPointerVisible = false
+                isHandPinching = false
+                inputStatus = inputController.statusText
+            } else if inputController.startHandInput() {
+                inputStatus = inputController.statusText
+                Task { await handTracking.start() }
+            } else {
+                inputStatus = inputController.statusText
+            }
         }
+    }
+
+    func setPointerInputMode(_ mode: DirectPointerInputMode) {
+        guard pointerInputMode != mode else { return }
+        handTracking.stop()
+        inputController.stop()
+        isHandPointerVisible = false
+        isHandPinching = false
+        pointerInputMode = mode
         inputStatus = inputController.statusText
     }
 
     func openInputPrivacySettings() {
         inputController.openPrivacySettings()
+    }
+
+    func openCameraPrivacySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func updateCanvas(size: CGSize, windowFrames: [UUID: CGRect]) {
@@ -290,6 +362,13 @@ final class DirectModeStore {
     func moveVirtualCursor(by delta: CGVector) {
         virtualCursor.x = (virtualCursor.x + delta.dx / max(canvasSize.width, 1)).clamped(to: 0 ... 1)
         virtualCursor.y = (virtualCursor.y + delta.dy / max(canvasSize.height, 1)).clamped(to: 0 ... 1)
+    }
+
+    func setVirtualCursor(to position: CGPoint) {
+        virtualCursor = CGPoint(
+            x: position.x.clamped(to: 0 ... 1),
+            y: position.y.clamped(to: 0 ... 1)
+        )
     }
 
     func sourcePoint(atCanvasPoint point: CGPoint) -> (DirectCaptureSource, CGPoint)? {

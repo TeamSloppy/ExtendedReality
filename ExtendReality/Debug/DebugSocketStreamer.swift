@@ -4,7 +4,18 @@ import Foundation
 
 /// Streams a debug-only spatial snapshot to the browser relay when the
 /// `-debugSocketURL` launch argument is present. The production app remains
-/// completely inactive when that UserDefaults value is missing.
+/// completely inactive when that UserDefaults value is missing. ARKit world
+/// tracking is separately opt-in through `-debugWorldTracking YES`.
+enum DebugWorldTrackingPolicy {
+    static func shouldStart(
+        isRequested: Bool,
+        isSupported: Bool,
+        isSimulator: Bool
+    ) -> Bool {
+        isRequested && isSupported && !isSimulator
+    }
+}
+
 @MainActor
 final class DebugSocketStreamer: NSObject, ARSessionDelegate {
     private static let targetUpdateRate = 60.0
@@ -21,7 +32,8 @@ final class DebugSocketStreamer: NSObject, ARSessionDelegate {
     private let headPose: HeadPoseController
     private let watchRemote: WatchRemoteController
     private let motionManager = CMMotionManager()
-    private let arSession = ARSession()
+    private let usesWorldTracking: Bool
+    private var arSession: ARSession?
     private var phoneMotion = PhoneMotion()
     private var phoneWorldPosition = SIMD3<Double>(0.86, -0.42, 0.24)
     private var arReferencePosition: SIMD3<Double>?
@@ -38,26 +50,34 @@ final class DebugSocketStreamer: NSObject, ARSessionDelegate {
         self.workspace = workspace
         self.headPose = headPose
         self.watchRemote = watchRemote
+        let defaults = UserDefaults.standard
+        usesWorldTracking = DebugWorldTrackingPolicy.shouldStart(
+            isRequested: defaults.bool(forKey: "debugWorldTracking"),
+            isSupported: Self.supportsWorldTracking,
+            isSimulator: Self.isSimulator
+        )
         super.init()
 
-        guard let rawURL = UserDefaults.standard.string(forKey: "debugSocketURL"),
+        guard let rawURL = defaults.string(forKey: "debugSocketURL"),
               let url = URL(string: rawURL),
               url.scheme == "ws" || url.scheme == "wss" else { return }
 
         startPhoneMotion()
-        startPhoneWorldTracking()
+        if usesWorldTracking {
+            startPhoneWorldTracking()
+        } else {
+            arTrackingState = Self.isSimulator ? "disabled:simulator" : "disabled"
+        }
         connect(to: url)
     }
 
     private func startPhoneWorldTracking() {
-        guard ARWorldTrackingConfiguration.isSupported else {
-            arTrackingState = "unsupported"
-            return
-        }
+        let session = ARSession()
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
-        arSession.delegate = self
-        arSession.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        session.delegate = self
+        arSession = session
+        session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         arTrackingState = "initializing"
     }
 
@@ -156,7 +176,7 @@ final class DebugSocketStreamer: NSObject, ARSessionDelegate {
                         "y": phoneWorldPosition.y,
                         "z": phoneWorldPosition.z
                     ],
-                    "positionSource": "ARKit",
+                    "positionSource": usesWorldTracking ? "ARKit" : "Static",
                     "tracking": arTrackingState
                 ],
                 "watch": ["position": ["x": -0.72, "y": -0.4, "z": 0.15]]
@@ -200,6 +220,22 @@ final class DebugSocketStreamer: NSObject, ARSessionDelegate {
             "isMinimized": window.isMinimized,
             "focused": workspace.activeWindowID == window.id
         ]
+    }
+
+    private static var supportsWorldTracking: Bool {
+#if targetEnvironment(simulator)
+        false
+#else
+        ARWorldTrackingConfiguration.isSupported
+#endif
+    }
+
+    private static var isSimulator: Bool {
+#if targetEnvironment(simulator)
+        true
+#else
+        false
+#endif
     }
 }
 

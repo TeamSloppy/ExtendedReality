@@ -283,11 +283,32 @@ struct MediaControlsView: View {
 
 struct YouTubeControlsView: View {
     @Bindable var session: YouTubeSession
-    let apiClient: YouTubeAPIClient
-    @AppStorage("youtube.apiKey") private var apiKey = ""
 
     var body: some View {
+        Group {
+            if !session.authSession.isSignedIn || session.isShowingHome {
+                YouTubeNativeHomeView(session: session)
+                    .frame(minHeight: 320, maxHeight: 380)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                playbackControls
+            }
+        }
+        .task(id: session.authSession.isSignedIn) {
+            session.authorizationDidChange()
+        }
+    }
+
+    private var playbackControls: some View {
         VStack(spacing: 12) {
+            HStack {
+                Button("Library", systemImage: "chevron.backward") { session.showHome() }
+                Spacer()
+                Text(session.currentVideo?.title ?? "Now Playing")
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+
             HStack {
                 TextField("YouTube URL, video ID, or search", text: $session.query)
                     .textFieldStyle(.roundedBorder)
@@ -350,9 +371,6 @@ struct YouTubeControlsView: View {
         }
         .padding(12)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .onAppear {
-            session.configureSearch(apiClient: apiClient, apiKeyProvider: { apiKey })
-        }
     }
 
     private func submit() {
@@ -523,8 +541,9 @@ struct SettingsView: View {
     @Environment(VoiceAssistantSettings.self) private var voiceSettings
     @Environment(VoiceAssistantCoordinator.self) private var voiceAssistant
     @Environment(WakeWordController.self) private var wakeWordController
-    @AppStorage("youtube.apiKey") private var youtubeAPIKey = ""
+    @Environment(YouTubeAuthSession.self) private var youtubeAuth
     @AppStorage(RemoteDisplayLayout.defaultsKey) private var remoteDisplayLayout = RemoteDisplayLayout.single
+    @State private var showsFocusSwitchingHelp = false
 
     var body: some View {
         NavigationStack {
@@ -533,23 +552,59 @@ struct SettingsView: View {
 
                 RemoteDisplayLayoutSettingsSection(selection: $remoteDisplayLayout)
 
-                Section("YouTube Data API") {
-                    SecureField("API key", text: $youtubeAPIKey)
-                        .textInputAutocapitalization(.never)
-                    Text("Search works after adding an API key. Google account OAuth additionally requires a Google iOS client ID and URL scheme in the project configuration.")
+                Section("YouTube") {
+                    LabeledContent(
+                        "Authorization",
+                        value: youtubeAuth.isSignedIn ? youtubeAuth.accountLabel : "Not signed in"
+                    )
+                    if youtubeAuth.isSignedIn {
+                        Button("Sign Out of Google", systemImage: "rectangle.portrait.and.arrow.right") {
+                            youtubeAuth.signOut()
+                        }
+                    }
+                    Text("YouTube uses Google OAuth with read-only access. API keys are not used.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Section("Tracking") {
-                    LabeledContent("Provider", value: "AirPods Core Motion")
+                    Toggle(
+                        "3DoF Head Tracking",
+                        isOn: Binding(
+                            get: { headPose.isEnabled },
+                            set: { headPose.setEnabled($0) }
+                        )
+                    )
+                    .accessibilityIdentifier("settings.headTracking3DoF")
+                    LabeledContent("Provider", value: headPose.providerName)
                     LabeledContent("Status", value: headPose.statusText)
                     HeadPoseReadout()
                     Button("Recenter Head Tracking", systemImage: "scope") {
                         headPose.recenter()
                     }
-                    Text("Compatible AirPods provide 3DoF through CMHeadphoneMotionManager. Without them, the workspace automatically remains head-locked.")
+                    .disabled(!headPose.isEnabled)
+#if DEBUG
+                    Text(
+                        headPose.isEnabled
+                            ? "Debug builds probe the XREAL Air USB HID interface first. Compatible AirPods remain the automatic fallback."
+                            : "Tracking is disabled. Spatial content remains head-locked until 3DoF is enabled again."
+                    )
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let diagnostics = headPose.diagnosticsText {
+                        Text(diagnostics)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+#else
+                    Text(
+                        headPose.isEnabled
+                            ? "Compatible AirPods provide 3DoF through CMHeadphoneMotionManager. Without them, the workspace automatically remains head-locked."
+                            : "Tracking is disabled. Spatial content remains head-locked until 3DoF is enabled again."
+                    )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+#endif
                 }
                 Section {
                     LabeledContent("Location", value: systemData.locationAuthorization.title)
@@ -575,10 +630,17 @@ struct SettingsView: View {
                     .disabled(systemData.healthAuthorization == .unavailable)
 
                     LabeledContent("Focus Status", value: focusStatusText)
+                    if let focusProfile = systemData.focusProfile {
+                        LabeledContent("ExtendReality Profile", value: focusProfile.title)
+                    }
                     Button("Allow Focus Status", systemImage: "moon.fill") {
                         systemData.requestFocusAccess()
                     }
                     .disabled(systemData.focusAuthorization == .restricted || systemData.focusAuthorization == .unavailable)
+
+                    Button("Switch Focus in Control Center", systemImage: "moonphase.first.quarter") {
+                        showsFocusSwitchingHelp = true
+                    }
 
                     Button("Refresh Data", systemImage: "arrow.clockwise") {
                         Task { await systemData.refreshAll() }
@@ -586,7 +648,7 @@ struct SettingsView: View {
                 } header: {
                     Text("System Data")
                 } footer: {
-                    Text("Health access is read-only: today's steps, active energy, and latest heart rate. Location is requested only while ExtendReality is in use. Web apps also need their own per-app permission.")
+                    Text("Health access is read-only: today's steps, active energy, and latest heart rate. Location is requested only while ExtendReality is in use. Add the ExtendReality filter in Settings > Focus to associate an ExtendReality profile with each system Focus. Web apps also need their own per-app permission.")
                 }
 
                 if let error = systemData.lastErrorMessage {
@@ -597,6 +659,11 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .alert("Switch Focus", isPresented: $showsFocusSwitchingHelp) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Open Control Center, tap Focus, then choose a mode. Apple doesn't allow third-party apps to switch the system Focus directly. ExtendReality refreshes the status when you return.")
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -706,8 +773,7 @@ private struct HeadPoseReadout: View {
 
 #Preview("YouTube Controls") {
     YouTubeControlsView(
-        session: YouTubeSession(initialVideoID: nil, loadsContent: false),
-        apiClient: YouTubeAPIClient()
+        session: YouTubeSession(initialVideoID: nil, loadsContent: false)
     )
     .defaultAppStorage(PreviewFixtures.userDefaults)
     .padding()

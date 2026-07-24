@@ -132,9 +132,9 @@ final class NativeVoiceCapture: NSObject, VoiceCapturing {
         exclusiveLease = nil
     }
 
-    private func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { granted in
+    nonisolated private func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation(isolation: nil) { continuation in
+            AVAudioApplication.requestRecordPermission { @Sendable granted in
                 continuation.resume(returning: granted)
             }
         }
@@ -182,14 +182,7 @@ final class NativeLocalVoiceTranscriber: LocalVoiceTranscribing {
     }
 
     private func requestPermission() async -> Bool {
-        let status = SFSpeechRecognizer.authorizationStatus()
-        if status == .authorized { return true }
-        if status == .denied || status == .restricted { return false }
-        return await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status == .authorized)
-            }
-        }
+        await SpeechAuthorizationBridge.request()
     }
 }
 

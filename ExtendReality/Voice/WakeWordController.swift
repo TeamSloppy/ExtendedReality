@@ -72,20 +72,7 @@ final class NativeWakeWordRecognizer: WakeWordRecognizing {
     }
 
     func requestAuthorization() async -> Bool {
-        switch SFSpeechRecognizer.authorizationStatus() {
-        case .authorized:
-            true
-        case .denied, .restricted:
-            false
-        case .notDetermined:
-            await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { status in
-                    continuation.resume(returning: status == .authorized)
-                }
-            }
-        @unknown default:
-            false
-        }
+        await SpeechAuthorizationBridge.request()
     }
 
     func start(
@@ -147,6 +134,7 @@ final class WakeWordController {
     @ObservationIgnored private var consecutiveWakeResults = 0
     @ObservationIgnored private var restartDelay: Duration = .milliseconds(500)
     @ObservationIgnored private var isForegroundActive = false
+    @ObservationIgnored private var isLiveTranslationActive = false
 
     init(
         settings: VoiceAssistantSettings,
@@ -170,6 +158,11 @@ final class WakeWordController {
         reevaluate(resumeDelay: false)
     }
 
+    func setLiveTranslationActive(_ isActive: Bool) {
+        isLiveTranslationActive = isActive
+        reevaluate(resumeDelay: !isActive)
+    }
+
     func assistantStateDidChange() {
         reevaluate(resumeDelay: !assistant.state.phase.suppressesWakeWord)
     }
@@ -179,6 +172,7 @@ final class WakeWordController {
             && settings.isEnabled
             && settings.wakeWordEnabled
             && !assistant.state.phase.suppressesWakeWord
+            && !isLiveTranslationActive
     }
 
     private func reevaluate(resumeDelay: Bool) {

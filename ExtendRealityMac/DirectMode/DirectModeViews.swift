@@ -129,6 +129,10 @@ struct DirectModeDetailView: View {
                 )
             }
 
+            if store.pointerInputMode == .hands {
+                handTrackingPanel
+            }
+
             if case .failed(let message) = store.state {
                 ContentUnavailableView(
                     "Direct Mode needs attention",
@@ -146,18 +150,77 @@ struct DirectModeDetailView: View {
             }
 
             HStack {
+                Picker("Pointer", selection: Binding(
+                    get: { store.pointerInputMode },
+                    set: { store.setPointerInputMode($0) }
+                )) {
+                    ForEach(DirectPointerInputMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+
                 Button(store.isPointerCaptured ? "Release Pointer" : "Capture Pointer") {
                     store.togglePointerCapture()
                 }
                 .disabled(store.state != .running)
                 Button("Open Privacy Settings") { store.openInputPrivacySettings() }
+                if store.pointerInputMode == .hands {
+                    Button("Camera Privacy") { store.openCameraPrivacySettings() }
+                }
                 Spacer()
-                Text("⌃⌥Space captures · Esc releases · ⌃⌥R recenters")
+                Text(store.pointerInputMode == .mouse
+                    ? "⌃⌥Space captures · Esc releases · ⌃⌥R recenters"
+                    : "⌃⌥Space toggles hands · ⌃⌥R recenters")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(28)
+    }
+
+    private var handTrackingPanel: some View {
+        @Bindable var tracking = store.handTracking
+
+        return HStack(spacing: 16) {
+            HandTrackingPreview(controller: tracking)
+                .frame(width: 320, height: 180)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+
+            VStack(alignment: .leading, spacing: 12) {
+                Label(tracking.state.title, systemImage: "camera.viewfinder")
+                    .font(.headline)
+                Text("Vision tracks all 21 joints on up to two hands. Point with your index finger and pinch to click or drag.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Camera", selection: Binding(
+                    get: { tracking.selectedCameraID },
+                    set: { tracking.selectCamera($0) }
+                )) {
+                    ForEach(tracking.availableCameras) { camera in
+                        Text(camera.name + (camera.isContinuity ? " · Continuity" : ""))
+                            .tag(Optional(camera.id))
+                    }
+                }
+                .disabled(store.isPointerCaptured)
+
+                Picker("Pointing hand", selection: $tracking.preferredHand) {
+                    ForEach(PreferredHand.allCases) { hand in
+                        Text(hand.title).tag(hand)
+                    }
+                }
+
+                Text("Detected: \(tracking.snapshot.hands.count) hands")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var previewGrid: some View {
@@ -276,11 +339,16 @@ struct DirectSpatialCanvasView: View {
                         .padding(.bottom, 18)
                 }
 
-                if store.isPointerCaptured {
+                if store.isPointerVisible {
                     Circle()
-                        .fill(.white)
+                        .fill(store.isHandPinching ? .orange : .white)
                         .overlay(Circle().stroke(.black, lineWidth: 2))
-                        .frame(width: 13, height: 13)
+                        .overlay {
+                            if store.isHandPinching {
+                                Circle().stroke(.orange.opacity(0.7), lineWidth: 3).padding(-6)
+                            }
+                        }
+                        .frame(width: store.isHandPinching ? 11 : 13, height: store.isHandPinching ? 11 : 13)
                         .position(
                             x: store.virtualCursor.x * proxy.size.width,
                             y: store.virtualCursor.y * proxy.size.height

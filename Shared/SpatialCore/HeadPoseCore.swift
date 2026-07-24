@@ -46,23 +46,50 @@ protocol HeadPoseProvider: AnyObject {
 }
 
 @MainActor
+protocol HeadPoseDiagnosticsProviding: AnyObject {
+    var diagnosticsText: String? { get }
+}
+
+@MainActor
 @Observable
 final class HeadPoseController {
+    static let isEnabledDefaultsKey = "headTracking.3DoFEnabled"
+
     private(set) var pose = HeadPose.identity
     private(set) var availability: HeadPoseAvailability
+    private(set) var isEnabled: Bool
 
     @ObservationIgnored private let provider: any HeadPoseProvider
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private var providerAvailability: HeadPoseAvailability
     @ObservationIgnored private var eventTask: Task<Void, Never>?
 
-    init(provider: any HeadPoseProvider) {
+    init(
+        provider: any HeadPoseProvider,
+        defaults: UserDefaults = .standard
+    ) {
         self.provider = provider
-        availability = provider.availability
+        self.defaults = defaults
+        providerAvailability = provider.availability
+        let enabledPreference =
+            defaults.object(forKey: Self.isEnabledDefaultsKey) as? Bool ?? true
+        isEnabled = enabledPreference
+        availability = enabledPreference
+            ? provider.availability
+            : .unavailable(reason: "3DoF disabled")
         eventTask = Task { [weak self, provider] in
             for await event in provider.eventStream() {
                 guard !Task.isCancelled, let self else { return }
                 switch event {
-                case .availability(let availability): self.availability = availability
-                case .pose(let pose): self.pose = pose
+                case .availability(let availability):
+                    self.providerAvailability = availability
+                    if self.isEnabled {
+                        self.availability = availability
+                    }
+                case .pose(let pose):
+                    if self.isEnabled {
+                        self.pose = pose
+                    }
                 }
             }
         }
@@ -75,7 +102,27 @@ final class HeadPoseController {
         }
     }
 
+    var providerName: String { provider.displayName }
+
+    var diagnosticsText: String? {
+        (provider as? any HeadPoseDiagnosticsProviding)?.diagnosticsText
+    }
+
     var isTracking: Bool { availability == .available }
+
+    func setEnabled(_ isEnabled: Bool) {
+        guard self.isEnabled != isEnabled else { return }
+        self.isEnabled = isEnabled
+        defaults.set(isEnabled, forKey: Self.isEnabledDefaultsKey)
+        pose = .identity
+
+        if isEnabled {
+            availability = providerAvailability
+            provider.recenter()
+        } else {
+            availability = .unavailable(reason: "3DoF disabled")
+        }
+    }
 
     func recenter() {
         pose = .identity
