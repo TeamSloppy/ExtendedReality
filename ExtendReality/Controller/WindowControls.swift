@@ -330,6 +330,38 @@ struct YouTubeControlsView: View {
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            HStack {
+                Button {
+                    session.toggleGeneratedStereo()
+                } label: {
+                    if session.isPreparingGeneratedStereo {
+                        Label("Preparing AI 3D…", systemImage: "view.3d")
+                    } else {
+                        Label(
+                            session.isGeneratedStereoActive ? "AI 3D On" : "Enable AI 3D",
+                            systemImage: "view.3d"
+                        )
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(session.isGeneratedStereoActive ? .cyan : nil)
+                .disabled(session.isPreparingGeneratedStereo)
+                .accessibilityIdentifier("youtube.controls.ai3d")
+
+                if session.generatedStereoSession.generatedStereoStatus != .idle {
+                    Label(
+                        session.generatedStereoSession.generatedStereoStatus.title,
+                        systemImage: session.generatedStereoSession.generatedStereoStatus.systemImage
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        session.generatedStereoSession.generatedStereoStatus.isError
+                            ? AnyShapeStyle(.orange)
+                            : AnyShapeStyle(.secondary)
+                    )
+                }
+                Spacer()
+            }
             if !session.results.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {

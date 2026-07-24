@@ -74,4 +74,31 @@ final class YouTubeDownloadStoreTests: XCTestCase {
         XCTAssertEqual(activity.progress, 0.42)
         XCTAssertNotNil(activity.byteDetail)
     }
+
+    func testDownloadedVideoUsesSharedGeneratedStereoSession() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceURL = root.appendingPathComponent("source.mp4", isDirectory: false)
+        let downloadsURL = root.appendingPathComponent("downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("local-video".utf8).write(to: sourceURL)
+
+        let store = YouTubeDownloadStore(directoryURL: downloadsURL)
+        try store.importVideo(from: sourceURL)
+        let session = YouTubeSession(
+            initialVideoID: nil,
+            loadsContent: false,
+            downloadStore: store
+        )
+
+        session.load(download: try XCTUnwrap(store.downloads.first))
+        XCTAssertTrue(session.localPlayer === session.generatedStereoSession.player)
+
+        session.toggleGeneratedStereo()
+        XCTAssertTrue(session.isGeneratedStereoActive)
+
+        session.toggleGeneratedStereo()
+        XCTAssertFalse(session.isGeneratedStereoActive)
+    }
 }

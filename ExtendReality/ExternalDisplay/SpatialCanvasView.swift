@@ -315,9 +315,16 @@ struct SpatialCanvasView: View {
     private var activeGeneratedStereoSession: MediaSession? {
         guard workspace.presentationMode == .windows,
               !workspace.isAppSwitcherPresented,
-              let window = workspace.activeWindow,
-              case .gallery = window.source else { return nil }
-        let session = environment.surfaces.mediaSession(for: window.id)
+              let window = workspace.activeWindow else { return nil }
+        let session: MediaSession
+        switch window.source {
+        case .gallery:
+            session = environment.surfaces.mediaSession(for: window.id)
+        case .youtube:
+            session = environment.surfaces.youtubeSession(for: window.id).generatedStereoSession
+        default:
+            return nil
+        }
         return session.isGeneratedStereoActive ? session : nil
     }
 

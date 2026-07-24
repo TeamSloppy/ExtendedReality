@@ -305,9 +305,11 @@ final class MediaSession: InputTarget {
     @ObservationIgnored private var hasLoadedPhotoLibrary = false
     @ObservationIgnored private var requestedThumbnailIDs: Set<String> = []
     @ObservationIgnored private var thumbnailRequestIDs: [String: PHImageRequestID] = [:]
+    @ObservationIgnored private var thumbnailCacheOrder: [String] = []
     @ObservationIgnored private var mediaRequestID: PHImageRequestID?
     @ObservationIgnored private var photoLibraryColumns = 5
     @ObservationIgnored private var photoLibraryVisibleRows = 3
+    @ObservationIgnored private var photoLibraryScrollAccumulator: CGFloat = 0
     @ObservationIgnored private var photoLibraryLoadGeneration: UInt64 = 0
     @ObservationIgnored private var pressedTarget: MediaSurfaceHitTarget?
     @ObservationIgnored private let playbackStateDidChange: () -> Void
@@ -409,7 +411,6 @@ final class MediaSession: InputTarget {
         photoLibraryColumns = max(1, columns)
         photoLibraryVisibleRows = max(1, visibleRows)
         photoLibraryFirstVisibleIndex = clampedPhotoLibraryStart(photoLibraryFirstVisibleIndex)
-        trimThumbnailCacheToVisibleAssets()
     }
 
     func scrollPhotoLibrary(byRows rowCount: Int) {
@@ -417,7 +418,6 @@ final class MediaSession: InputTarget {
         photoLibraryFirstVisibleIndex = clampedPhotoLibraryStart(
             photoLibraryFirstVisibleIndex + rowCount * photoLibraryColumns
         )
-        trimThumbnailCacheToVisibleAssets()
     }
 
     func requestThumbnail(for asset: PHAsset, targetSize: CGSize) {
@@ -444,10 +444,11 @@ final class MediaSession: InputTarget {
                     requestedThumbnailIDs.remove(identifier)
                     thumbnailRequestIDs.removeValue(forKey: identifier)
                 }
-                guard !isCancelled,
-                      visibleThumbnailAssetIDs.contains(identifier),
-                      let image = imageBox?.value else { return }
+                guard !isCancelled, let image = imageBox?.value else { return }
                 photoLibraryThumbnails[identifier] = image
+                thumbnailCacheOrder.removeAll { $0 == identifier }
+                thumbnailCacheOrder.append(identifier)
+                trimThumbnailCacheIfNeeded()
             }
         }
         thumbnailRequestIDs[identifier] = requestID
@@ -457,32 +458,14 @@ final class MediaSession: InputTarget {
         photoLibraryThumbnails[asset.localIdentifier]
     }
 
-    private var visibleThumbnailAssetIDs: Set<String> {
-        let visibleCount = photoLibraryColumns * photoLibraryVisibleRows
-        return Set(
-            photoLibraryAssets
-                .dropFirst(photoLibraryFirstVisibleIndex)
-                .prefix(visibleCount)
-                .map(\.localIdentifier)
-        )
-    }
-
-    private func trimThumbnailCacheToVisibleAssets() {
-        let retainedIDs = visibleThumbnailAssetIDs
-        let obsoleteRequests = thumbnailRequestIDs.filter {
-            !retainedIDs.contains($0.key)
+    private func trimThumbnailCacheIfNeeded(maximumCount: Int = 120) {
+        guard thumbnailCacheOrder.count > maximumCount else { return }
+        let obsoleteCount = thumbnailCacheOrder.count - maximumCount
+        let obsoleteIDs = thumbnailCacheOrder.prefix(obsoleteCount)
+        for identifier in obsoleteIDs {
+            photoLibraryThumbnails.removeValue(forKey: identifier)
         }
-        for (identifier, requestID) in obsoleteRequests {
-            photoImageManager.cancelImageRequest(requestID)
-            thumbnailRequestIDs.removeValue(forKey: identifier)
-            requestedThumbnailIDs.remove(identifier)
-        }
-        let retainedThumbnails = photoLibraryThumbnails.filter {
-            retainedIDs.contains($0.key)
-        }
-        if retainedThumbnails.count != photoLibraryThumbnails.count {
-            photoLibraryThumbnails = retainedThumbnails
-        }
+        thumbnailCacheOrder.removeFirst(obsoleteCount)
     }
 
     private func clearThumbnailCache() {
@@ -492,6 +475,7 @@ final class MediaSession: InputTarget {
         thumbnailRequestIDs = [:]
         requestedThumbnailIDs = []
         photoLibraryThumbnails = [:]
+        thumbnailCacheOrder = []
     }
 
     private func cancelPendingMediaRequest() {
@@ -599,6 +583,22 @@ final class MediaSession: InputTarget {
         }
     }
 
+    func loadExternalVideo(
+        from url: URL,
+        suggestedName: String,
+        autoplay: Bool = true
+    ) {
+        player?.pause()
+        loadVideoPlayerItem(
+            AVPlayerItem(asset: AVURLAsset(url: url)),
+            suggestedName: suggestedName
+        )
+        guard !autoplay else { return }
+        player?.pause()
+        isPlaying = false
+        playbackStateDidChange()
+    }
+
     func setStereoDisparityPercent(_ value: Double) {
         stereoDisparityPercent = StereoDepthSettings.clampedDisparityPercent(value)
     }
@@ -640,7 +640,12 @@ final class MediaSession: InputTarget {
         guard let player else { return }
         let current = player.currentTime().seconds
         guard current.isFinite else { return }
-        player.seek(to: CMTime(seconds: max(0, current + seconds), preferredTimescale: 600))
+        seek(to: current + seconds)
+    }
+
+    func seek(to seconds: Double) {
+        guard let player, seconds.isFinite else { return }
+        player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
         depthTask?.cancel()
         depthTask = nil
         latestStereoDepthFrame = nil
@@ -803,8 +808,8 @@ final class MediaSession: InputTarget {
             photoLibraryFilter.includes($0)
         }
         photoLibraryFirstVisibleIndex = 0
+        photoLibraryScrollAccumulator = 0
         pressedTarget = nil
-        trimThumbnailCacheToVisibleAssets()
     }
 
     private func photoLibraryAsset(at position: CGPoint) -> PHAsset? {
@@ -821,7 +826,12 @@ final class MediaSession: InputTarget {
 
     private func scrollPhotoLibrary(by delta: CGFloat) {
         guard delta != 0 else { return }
-        scrollPhotoLibrary(byRows: delta > 0 ? 1 : -1)
+        let rowThreshold: CGFloat = 0.08
+        photoLibraryScrollAccumulator += delta
+        let rowCount = Int(photoLibraryScrollAccumulator / rowThreshold)
+        guard rowCount != 0 else { return }
+        photoLibraryScrollAccumulator -= CGFloat(rowCount) * rowThreshold
+        scrollPhotoLibrary(byRows: rowCount)
     }
 
     private func clampedPhotoLibraryStart(_ value: Int) -> Int {
@@ -1487,7 +1497,6 @@ private struct MediaViewerControlsOverlay: View {
 
 private struct PhotoLibraryGridView: View {
     let session: MediaSession
-    @State private var consumedDragRows = 0
 
     var body: some View {
         switch session.photoLibraryAuthorizationStatus {
@@ -1525,100 +1534,80 @@ private struct PhotoLibraryGridView: View {
     private var photoGrid: some View {
         GeometryReader { proxy in
             let layout = PhotoLibraryGridLayout(size: proxy.size)
-            let visibleAssets = Array(
-                session.photoLibraryAssets
-                    .dropFirst(session.photoLibraryFirstVisibleIndex)
-                    .prefix(layout.capacity)
-            )
 
-            VStack(spacing: 0) {
-                ForEach(0 ..< layout.rowCount, id: \.self) { row in
-                    HStack(spacing: 0) {
-                        ForEach(0 ..< layout.columnCount, id: \.self) { column in
-                            let index = row * layout.columnCount + column
-                            Group {
-                                if visibleAssets.indices.contains(index) {
-                                    let asset = visibleAssets[index]
-                                    Button {
-                                        session.openPhotoLibraryAsset(
-                                            withIdentifier: asset.localIdentifier
-                                        )
-                                    } label: {
-                                        PhotoLibraryThumbnailView(
-                                            asset: asset,
-                                            image: session.thumbnail(for: asset)
-                                        )
-                                        .overlay {
-                                            if session.pendingPhotoLibraryAssetID == asset.localIdentifier {
-                                                Color.black.opacity(0.42)
-                                                ProgressView()
-                                                    .tint(.white)
-                                            }
+            ScrollViewReader { scrollProxy in
+                ZStack(alignment: .topTrailing) {
+                    ScrollView(.vertical) {
+                        LazyVGrid(columns: layout.columns, spacing: layout.spacing) {
+                            ForEach(session.photoLibraryAssets, id: \.localIdentifier) { asset in
+                                Button {
+                                    session.openPhotoLibraryAsset(
+                                        withIdentifier: asset.localIdentifier
+                                    )
+                                } label: {
+                                    PhotoLibraryThumbnailView(
+                                        asset: asset,
+                                        image: session.thumbnail(for: asset)
+                                    )
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .overlay {
+                                        if session.pendingPhotoLibraryAssetID == asset.localIdentifier {
+                                            Color.black.opacity(0.42)
+                                            ProgressView()
+                                                .tint(.white)
                                         }
                                     }
-                                    .buttonStyle(.plain)
-                                    .task(id: asset.localIdentifier) {
-                                        session.requestThumbnail(
-                                            for: asset,
-                                            targetSize: layout.thumbnailTargetSize
-                                        )
-                                    }
-                                } else {
-                                    Color.clear
+                                }
+                                .buttonStyle(.plain)
+                                .aspectRatio(1, contentMode: .fit)
+                                .id(asset.localIdentifier)
+                                .task(id: asset.localIdentifier) {
+                                    session.requestThumbnail(
+                                        for: asset,
+                                        targetSize: layout.thumbnailTargetSize
+                                    )
                                 }
                             }
-                            .padding(layout.spacing / 2)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .padding(layout.spacing)
+                    }
+                    .scrollIndicators(.visible)
+                    .id(session.photoLibraryFilter)
+                    .onChange(of: session.photoLibraryFirstVisibleIndex) { _, index in
+                        guard session.photoLibraryAssets.indices.contains(index) else { return }
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            scrollProxy.scrollTo(
+                                session.photoLibraryAssets[index].localIdentifier,
+                                anchor: .top
+                            )
                         }
                     }
-                    .frame(maxHeight: .infinity)
+
+                    Text("\(session.photoLibraryAssets.count) items")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.72), in: Capsule())
+                        .padding(12)
+                        .allowsHitTesting(false)
+                }
+                .onAppear {
+                    session.updatePhotoLibraryGrid(
+                        columns: layout.columnCount,
+                        visibleRows: layout.rowCount
+                    )
+                }
+                .onChange(of: proxy.size) { _, newSize in
+                    let newLayout = PhotoLibraryGridLayout(size: newSize)
+                    session.updatePhotoLibraryGrid(
+                        columns: newLayout.columnCount,
+                        visibleRows: newLayout.rowCount
+                    )
                 }
             }
-            .overlay(alignment: .topTrailing) {
-                Text("\(session.photoLibraryAssets.count) items")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.72), in: Capsule())
-                    .padding(12)
-                    .allowsHitTesting(false)
-            }
-            .onAppear {
-                session.updatePhotoLibraryGrid(
-                    columns: layout.columnCount,
-                    visibleRows: layout.rowCount
-                )
-            }
-            .onChange(of: proxy.size) { _, newSize in
-                let newLayout = PhotoLibraryGridLayout(size: newSize)
-                session.updatePhotoLibraryGrid(
-                    columns: newLayout.columnCount,
-                    visibleRows: newLayout.rowCount
-                )
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { value in
-                        let requestedRows = dragRows(for: value.translation.height)
-                        let rowDelta = requestedRows - consumedDragRows
-                        guard rowDelta != 0 else { return }
-                        session.scrollPhotoLibrary(byRows: rowDelta)
-                        consumedDragRows = requestedRows
-                    }
-                    .onEnded { value in
-                        let predictedRows = dragRows(for: value.predictedEndTranslation.height)
-                        let extraRows = max(-3, min(3, predictedRows - consumedDragRows))
-                        session.scrollPhotoLibrary(byRows: extraRows)
-                        consumedDragRows = 0
-                    }
-            )
         }
         .clipped()
-    }
-
-    private func dragRows(for verticalTranslation: CGFloat) -> Int {
-        Int((-verticalTranslation / 72).rounded(.towardZero))
     }
 }
 
@@ -1648,11 +1637,25 @@ private struct PhotoLibraryGridLayout {
     let spacing: CGFloat = 4
 
     init(size: CGSize) {
-        columnCount = max(3, Int(size.width / 150))
-        rowCount = max(2, Int(size.height / 150))
+        let spacing: CGFloat = 4
+        let preferredTileWidth: CGFloat = 140
+        columnCount = max(
+            3,
+            Int((size.width + spacing) / (preferredTileWidth + spacing))
+        )
+        let tileWidth = max(
+            1,
+            (size.width - CGFloat(columnCount + 1) * spacing) / CGFloat(columnCount)
+        )
+        rowCount = max(2, Int(ceil(size.height / (tileWidth + spacing))))
     }
 
-    var capacity: Int { columnCount * rowCount }
+    var columns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: spacing),
+            count: columnCount
+        )
+    }
 
     var thumbnailTargetSize: CGSize {
         CGSize(width: 400, height: 400)

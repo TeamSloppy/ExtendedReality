@@ -21,6 +21,11 @@ struct YouTubePendingDownload: Equatable, Identifiable, Sendable {
     var resolution: Int?
 }
 
+struct YouTubePlayableStream: Equatable, Sendable {
+    let url: URL
+    let resolution: Int?
+}
+
 enum YouTubeDownloadQuality: Int, CaseIterable, Codable, Identifiable, Sendable {
     case best = 0
     case p1080 = 1080
@@ -139,6 +144,32 @@ final class YouTubeDownloadStore {
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
 
+    func resolvePlayableStream(
+        videoID: String,
+        quality: YouTubeDownloadQuality
+    ) async throws -> YouTubePlayableStream {
+        let streams = try await YouTube(videoID: videoID).streams
+        let compatibleStreams = streams
+            .filterVideoAndAudio()
+            .filter { $0.fileExtension == .mp4 && $0.isNativelyPlayable }
+        let preferredStreams: [YouTubeKit.Stream]
+        if let maximumResolution = quality.maximumResolution {
+            preferredStreams = compatibleStreams.filter {
+                ($0.videoResolution ?? .max) <= maximumResolution
+            }
+        } else {
+            preferredStreams = compatibleStreams
+        }
+        guard let stream = (preferredStreams.isEmpty ? compatibleStreams : preferredStreams)
+            .highestResolutionStream() else {
+            throw YouTubeDownloadError.noPlayableStream
+        }
+        return YouTubePlayableStream(
+            url: stream.url,
+            resolution: stream.videoResolution
+        )
+    }
+
     func download(_ video: YouTubeVideo) {
         guard activityByVideoID[video.id] == nil, !contains(videoID: video.id) else { return }
         let quality = selectedQuality
@@ -157,26 +188,14 @@ final class YouTubeDownloadStore {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let streams = try await YouTube(videoID: video.id).streams
-                let compatibleStreams = streams
-                    .filterVideoAndAudio()
-                    .filter({ $0.fileExtension == .mp4 && $0.isNativelyPlayable })
-                let preferredStreams: [YouTubeKit.Stream]
-                if let maximumResolution = quality.maximumResolution {
-                    preferredStreams = compatibleStreams.filter {
-                        ($0.videoResolution ?? .max) <= maximumResolution
-                    }
-                } else {
-                    preferredStreams = compatibleStreams
-                }
-                guard let stream = (preferredStreams.isEmpty ? compatibleStreams : preferredStreams)
-                    .highestResolutionStream() else {
-                    throw YouTubeDownloadError.noPlayableStream
-                }
+                let stream = try await resolvePlayableStream(
+                    videoID: video.id,
+                    quality: quality
+                )
 
                 guard !Task.isCancelled else { return }
                 if let index = pendingDownloads.firstIndex(where: { $0.id == video.id }) {
-                    pendingDownloads[index].resolution = stream.videoResolution
+                    pendingDownloads[index].resolution = stream.resolution
                 }
                 activityByVideoID[video.id] = .downloading(
                     progress: 0,
@@ -203,7 +222,7 @@ final class YouTubeDownloadStore {
                     title: video.title,
                     channelTitle: video.channelTitle,
                     thumbnailURL: video.thumbnailURL,
-                    resolution: stream.videoResolution,
+                    resolution: stream.resolution,
                     preferredExtension: "mp4"
                 )
                 downloads.insert(download, at: 0)

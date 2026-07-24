@@ -80,14 +80,19 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
     private(set) var currentTime = 0.0
     private(set) var duration = 0.0
     private(set) var playerErrorMessage: String?
+    private(set) var isPreparingGeneratedStereo = false
+    private(set) var nativePlaybackResolution: Int?
+    private(set) var isNativeOnlinePlayback = false
 
     @ObservationIgnored let webView: WKWebView
+    @ObservationIgnored let generatedStereoSession = MediaSession()
     @ObservationIgnored private let playerMessageHandler: YouTubePlayerMessageHandler
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var metadataTask: Task<Void, Never>?
     @ObservationIgnored private var libraryTask: Task<Void, Never>?
     @ObservationIgnored private var collectionTask: Task<Void, Never>?
     @ObservationIgnored private var localPlaybackTask: Task<Void, Never>?
+    @ObservationIgnored private var stereoPreparationTask: Task<Void, Never>?
     @ObservationIgnored private let apiClient: YouTubeAPIClient
     @ObservationIgnored let authSession: YouTubeAuthSession
     @ObservationIgnored let downloadStore: YouTubeDownloadStore
@@ -156,10 +161,19 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
             return
         }
         webView.evaluateJavaScript("player && player.pauseVideo();")
-        localPlaybackTask?.cancel()
-        let player = AVPlayer(url: url)
+        clearLocalPlayback()
+        generatedStereoSession.loadExternalVideo(
+            from: url,
+            suggestedName: download.title
+        )
+        guard let player = generatedStereoSession.player else {
+            downloadStore.report(YouTubeDownloadError.missingFile)
+            return
+        }
         localPlayer = player
         currentDownload = download
+        nativePlaybackResolution = download.resolution
+        isNativeOnlinePlayback = false
         currentVideo = nil
         videoID = download.youtubeVideoID
         isShowingHome = false
@@ -175,6 +189,90 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
 
     func download(_ video: YouTubeVideo) {
         downloadStore.download(video)
+    }
+
+    var isGeneratedStereoActive: Bool {
+        generatedStereoSession.isGeneratedStereoActive
+    }
+
+    var nativePlaybackSourceTitle: String {
+        if isNativeOnlinePlayback {
+            if let nativePlaybackResolution { return "Online · \(nativePlaybackResolution)p" }
+            return "Online Stream"
+        }
+        return localPlayer == nil ? "Online" : "On Device"
+    }
+
+    var nativePlaybackSourceSystemImage: String {
+        if isNativeOnlinePlayback { return "wifi" }
+        return localPlayer == nil ? "wifi" : "internaldrive.fill"
+    }
+
+    func toggleGeneratedStereo() {
+        if isGeneratedStereoActive {
+            generatedStereoSession.setPresentationMode(.twoDimensional)
+            return
+        }
+
+        if localPlayer != nil {
+            generatedStereoSession.setPresentationMode(.generatedStereo)
+            return
+        }
+
+        guard let videoID else {
+            playerErrorMessage = "Open a YouTube video before enabling AI 3D."
+            return
+        }
+
+        stereoPreparationTask?.cancel()
+        isPreparingGeneratedStereo = true
+        playerErrorMessage = nil
+        let resumeTime = currentTime
+        let shouldResumePlayback = isPlaying
+        let quality = downloadStore.selectedQuality
+        stereoPreparationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let stream = try await downloadStore.resolvePlayableStream(
+                    videoID: videoID,
+                    quality: quality
+                )
+                try Task.checkCancellation()
+                guard self.videoID == videoID, !isShowingHome else { return }
+
+                _ = try? await webView.evaluateJavaScript("player && player.pauseVideo();")
+                generatedStereoSession.loadExternalVideo(
+                    from: stream.url,
+                    suggestedName: currentVideo?.title ?? "YouTube Video",
+                    autoplay: shouldResumePlayback
+                )
+                guard let player = generatedStereoSession.player else {
+                    throw YouTubeDownloadError.noPlayableStream
+                }
+                if resumeTime.isFinite, resumeTime > 0 {
+                    generatedStereoSession.seek(to: resumeTime)
+                }
+                localPlayer = player
+                currentDownload = nil
+                nativePlaybackResolution = stream.resolution
+                isNativeOnlinePlayback = true
+                isReady = true
+                isPlaying = shouldResumePlayback
+                observeLocalPlayback(player)
+                generatedStereoSession.setPresentationMode(.generatedStereo)
+                isPreparingGeneratedStereo = false
+                stereoPreparationTask = nil
+                notifySpatialPresentationChanged()
+            } catch is CancellationError {
+                isPreparingGeneratedStereo = false
+                stereoPreparationTask = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                isPreparingGeneratedStereo = false
+                stereoPreparationTask = nil
+                playerErrorMessage = "AI 3D could not open this video: \(error.localizedDescription)"
+            }
+        }
     }
 
     func importVideo(from url: URL) {
@@ -196,6 +294,9 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
 
     func showHome() {
         pause()
+        stereoPreparationTask?.cancel()
+        isPreparingGeneratedStereo = false
+        generatedStereoSession.setPresentationMode(.twoDimensional)
         isShowingHome = true
         ensureLibraryLoaded()
         notifySpatialPresentationChanged()
@@ -420,8 +521,12 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
 
     func seek(seconds: Double) {
         if let localPlayer {
-            let target = max(0, localPlayer.currentTime().seconds + seconds)
-            localPlayer.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+            if isGeneratedStereoActive {
+                generatedStereoSession.seek(seconds: seconds)
+            } else {
+                let target = max(0, localPlayer.currentTime().seconds + seconds)
+                localPlayer.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+            }
         } else {
             webView.evaluateJavaScript("player && player.seekTo(Math.max(0, player.getCurrentTime() + \(seconds)), true);")
         }
@@ -430,7 +535,11 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
     func seek(to time: Double) {
         guard time.isFinite else { return }
         if let localPlayer {
-            localPlayer.seek(to: CMTime(seconds: max(0, time), preferredTimescale: 600))
+            if isGeneratedStereoActive {
+                generatedStereoSession.seek(to: time)
+            } else {
+                localPlayer.seek(to: CMTime(seconds: max(0, time), preferredTimescale: 600))
+            }
         } else {
             webView.evaluateJavaScript("player && player.seekTo(\(max(0, time)), true);")
         }
@@ -628,15 +737,21 @@ final class YouTubeSession: NSObject, InputTarget, WKNavigationDelegate {
     }
 
     private func clearLocalPlayback() {
+        stereoPreparationTask?.cancel()
+        stereoPreparationTask = nil
+        isPreparingGeneratedStereo = false
+        generatedStereoSession.setPresentationMode(.twoDimensional)
         localPlaybackTask?.cancel()
         localPlaybackTask = nil
         localPlayer?.pause()
         localPlayer = nil
         currentDownload = nil
+        nativePlaybackResolution = nil
+        isNativeOnlinePlayback = false
     }
 
     var showsSpatialComposition: Bool {
-        authSession.isSignedIn || currentDownload != nil
+        authSession.isSignedIn || localPlayer != nil
     }
 
     private func notifySpatialPresentationChanged() {
@@ -803,9 +918,44 @@ private struct YouTubePlayerSurfaceView: View {
 
                 Spacer()
 
+                Button {
+                    session.toggleGeneratedStereo()
+                    ControllerHaptics.selection()
+                } label: {
+                    Group {
+                        if session.isPreparingGeneratedStereo {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("AI 3D", systemImage: "view.3d")
+                        }
+                    }
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        session.isGeneratedStereoActive
+                            ? Color.cyan.opacity(0.24)
+                            : Color.white.opacity(0.07),
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule().strokeBorder(
+                            session.isGeneratedStereoActive ? Color.cyan.opacity(0.8) : SpatialVideoTheme.line
+                        )
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(session.isGeneratedStereoActive ? .cyan : .white)
+                .disabled(session.isPreparingGeneratedStereo)
+                .accessibilityLabel(
+                    session.isGeneratedStereoActive ? "Disable AI 3D" : "Enable AI 3D"
+                )
+                .accessibilityIdentifier("youtube.player.ai3d")
+
                 Label(
-                    session.localPlayer == nil ? "Online" : "On Device",
-                    systemImage: session.localPlayer == nil ? "wifi" : "internaldrive.fill"
+                    session.nativePlaybackSourceTitle,
+                    systemImage: session.nativePlaybackSourceSystemImage
                 )
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
@@ -825,7 +975,21 @@ private struct YouTubePlayerSurfaceView: View {
 
             ZStack {
                 SpatialVideoTheme.background
-                if let player = session.localPlayer {
+                if session.isGeneratedStereoActive {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .tint(.white)
+                        Label(
+                            session.generatedStereoSession.generatedStereoStatus.title,
+                            systemImage: session.generatedStereoSession.generatedStereoStatus.systemImage
+                        )
+                        .font(.callout.weight(.semibold))
+                        Text("Rendering Full SBS on the glasses")
+                            .font(.caption)
+                            .foregroundStyle(SpatialVideoTheme.muted)
+                    }
+                    .foregroundStyle(.white)
+                } else if let player = session.localPlayer {
                     VideoPlayer(player: player)
                 } else {
                     YouTubePlayerWebView(session: session)
@@ -840,6 +1004,20 @@ private struct YouTubePlayerSurfaceView: View {
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .allowsHitTesting(false)
+                }
+
+                if session.generatedStereoSession.generatedStereoStatus.isError {
+                    Label(
+                        session.generatedStereoSession.generatedStereoStatus.title,
+                        systemImage: session.generatedStereoSession.generatedStereoStatus.systemImage
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(12)
+                    .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(false)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
